@@ -256,7 +256,7 @@
     if (open) renderChipSettings();
     els.chipSettings.hidden = !open;
     els.gear.setAttribute("aria-expanded", String(open));
-    if (open) els.chipSettingsList.querySelector("input")?.focus();
+    if (open) els.chipSettings.querySelector("select, input")?.focus();
   }
 
   function renderStatus(now) {
@@ -397,7 +397,7 @@
 
     if (pendingScroll) {
       pendingScroll = false;
-      if (nowLine) requestAnimationFrame(() => scrollToNow(nowLine));
+      if (nowLine) scrollToNow(nowLine); // layout is read synchronously; works in background tabs too
     }
   }
 
@@ -413,7 +413,7 @@
   // Put the "now" row ~40% down the visible area, so the streams that just
   // started (usually the live ones) stay in view above it.
   function scrollToNow(el) {
-    const stickyHeight = document.querySelector(".controls").offsetHeight;
+    const stickyHeight = document.querySelector(".topbar").offsetHeight;
     const context = (window.innerHeight - stickyHeight) * 0.4;
     const top = el.getBoundingClientRect().top + window.scrollY - stickyHeight - context;
     // Plain (x, y) form: older Safari throws on behavior: "instant".

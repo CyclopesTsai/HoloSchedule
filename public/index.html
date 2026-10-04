@@ -22,62 +22,51 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="site-header">
+  <header class="topbar">
     <div class="wrap">
-      <div class="header-row">
-        <div>
-          <div class="title-row">
-            <h1>hololive 直播節目表</h1>
-            <span class="unofficial">非官方</span>
-          </div>
-          <p class="status" id="status" aria-live="polite">讀取中…</p>
-        </div>
-        <div class="settings">
-          <label class="tz">
-            <span class="visually-hidden">時區</span>
-            <select id="tz">
-              <option value="Asia/Taipei">台北時間</option>
-              <option value="Asia/Tokyo">東京時間</option>
-              <option value="local">瀏覽器本地</option>
-            </select>
-          </label>
-          <label class="theme">
-            <span class="visually-hidden">外觀</span>
-            <select id="theme">
-              <option value="system">跟隨系統</option>
-              <option value="light">淺色模式</option>
-              <option value="dark">深色模式</option>
-            </select>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" id="hide-ended">
-            <span>隱藏已結束</span>
-          </label>
-        </div>
+      <div class="title-row">
+        <h1>hololive 直播節目表</h1>
+        <span class="unofficial">非官方</span>
+        <p class="status" id="status" aria-live="polite">讀取中…</p>
       </div>
       <p class="stale" id="stale" hidden>⚠️ 資料可能已過期（超過 1 小時未更新），請以<a href="https://schedule.hololive.tv/" target="_blank" rel="noopener noreferrer">原站</a>為準。</p>
-    </div>
-  </header>
-
-  <nav class="controls" aria-label="依團體篩選">
-    <div class="wrap">
-      <div class="filter-bar">
+      <nav class="filter-bar" aria-label="依團體篩選">
         <div class="chips" id="groups" role="group" aria-label="團體"></div>
-        <button type="button" class="gear" id="chip-settings-btn" aria-label="設定要顯示的團體"
+        <button type="button" class="gear" id="chip-settings-btn" aria-label="設定"
                 aria-haspopup="true" aria-expanded="false" aria-controls="chip-settings">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
-      </div>
+      </nav>
       <div class="chip-settings" id="chip-settings" hidden>
+        <div class="setting">
+          <label for="tz">時區</label>
+          <select id="tz">
+            <option value="Asia/Taipei">台北時間</option>
+            <option value="Asia/Tokyo">東京時間</option>
+            <option value="local">瀏覽器本地</option>
+          </select>
+        </div>
+        <div class="setting">
+          <label for="theme">外觀</label>
+          <select id="theme">
+            <option value="system">跟隨系統</option>
+            <option value="light">淺色模式</option>
+            <option value="dark">深色模式</option>
+          </select>
+        </div>
+        <label class="toggle setting">
+          <input type="checkbox" id="hide-ended">
+          <span>隱藏已結束的節目</span>
+        </label>
         <p class="chip-settings-title">要顯示的團體</p>
         <div id="chip-settings-list"></div>
         <p class="chip-settings-note">未勾選的團體不會出現在清單中（包含「全部」）。</p>
       </div>
     </div>
-  </nav>
+  </header>
 
   <main class="wrap" id="main">
     <div id="days"></div>
