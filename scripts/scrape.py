@@ -11,6 +11,11 @@ Times on the site are Asia/Tokyo (as long as no timezone cookie is sent, which w
 never do). Output times stay in JST with an explicit +09:00 offset; converting to
 other timezones is the frontend's job.
 
+Stream titles aren't on ホロジュール, so they come from YouTube's public oEmbed
+endpoint (no API key). Titles are cached in titles.json next to data.json and
+only refreshed when missing or older than TITLE_TTL, so a run normally makes a
+handful of oEmbed requests. Title lookups never fail the run.
+
 On any failure (network, unexpected HTML, zero items) the script exits non-zero and
 leaves the existing output file untouched.
 """
@@ -57,6 +62,15 @@ PAUSE_BETWEEN_PAGES = 1.5
 
 DEFAULT_OUTPUT = Path(__file__).resolve().parent.parent / "public" / "data.json"
 
+OEMBED_URL = "https://www.youtube.com/oembed"
+# Previous deploy's title cache; CI has no local copy, so it reads this one.
+TITLE_CACHE_URL = os.environ.get(
+    "HOLOSCHEDULE_TITLE_CACHE_URL", "https://cyclopestsai.github.io/HoloSchedule/titles.json"
+)
+TITLE_TTL = timedelta(hours=3)
+MAX_TITLE_FETCHES = 150      # per run; the first run without a cache needs ~130
+PAUSE_BETWEEN_TITLES = 0.2
+
 log = logging.getLogger("scrape")
 
 DATE_RE = re.compile(r"(\d{1,2})\s*/\s*(\d{1,2})")
@@ -79,6 +93,7 @@ class Item:
     url: str
     thumbnail: str | None
     is_live: bool
+    title: str | None = None
 
     def to_json(self) -> dict:
         return {
@@ -89,6 +104,7 @@ class Item:
             "url": self.url,
             "thumbnail": self.thumbnail,
             "is_live": self.is_live,
+            "title": self.title,
         }
 
 
@@ -295,6 +311,97 @@ def scrape(
     return merge_items(per_group)
 
 
+# ------------------------------------------------------------------------- titles
+
+
+class TitleError(Exception):
+    """Transient oEmbed failure; keep whatever title we had."""
+
+
+def fetch_title(session: requests.Session, video_id: str) -> str | None:
+    """Title via YouTube oEmbed. None when YouTube won't say (private, members-only, removed)."""
+    try:
+        resp = session.get(
+            OEMBED_URL,
+            params={"format": "json", "url": f"https://www.youtube.com/watch?v={video_id}"},
+            timeout=(5, 10),
+        )
+    except requests.RequestException as e:
+        raise TitleError(str(e)) from e
+    if resp.status_code in (400, 401, 403, 404):
+        return None
+    if resp.status_code != 200:
+        raise TitleError(f"HTTP {resp.status_code}")
+    try:
+        title = resp.json().get("title")
+    except ValueError as e:
+        raise TitleError("invalid JSON") from e
+    if not isinstance(title, str) or not title.strip():
+        return None
+    return title.strip()
+
+
+def parse_title_cache(raw: object) -> dict[str, dict]:
+    """Keep only well-formed {id: {"title": str|None, "fetched_at": iso}} entries."""
+    entries = raw.get("titles") if isinstance(raw, dict) else None
+    if not isinstance(entries, dict):
+        return {}
+    cache = {}
+    for vid, entry in entries.items():
+        if not (isinstance(entry, dict) and isinstance(entry.get("fetched_at"), str)):
+            continue
+        title = entry.get("title")
+        try:
+            datetime.fromisoformat(entry["fetched_at"])
+        except ValueError:
+            continue
+        cache[vid] = {"title": title if isinstance(title, str) else None, "fetched_at": entry["fetched_at"]}
+    return cache
+
+
+def load_title_cache(local: Path, session: requests.Session | None) -> dict[str, dict]:
+    try:
+        if local.is_file():
+            return parse_title_cache(json.loads(local.read_text(encoding="utf-8")))
+        if session is not None:
+            resp = session.get(TITLE_CACHE_URL, timeout=(5, 10))
+            if resp.status_code == 200:
+                return parse_title_cache(resp.json())
+            log.info("no previous title cache (HTTP %d)", resp.status_code)
+    except (OSError, ValueError, requests.RequestException) as e:
+        log.warning("ignoring unreadable title cache: %s", e)
+    return {}
+
+
+def fill_titles(
+    items: list[Item],
+    cache: dict[str, dict],
+    fetcher: Callable[[str], str | None] | None,
+    now: datetime,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, dict]:
+    """Set item.title from the cache, refreshing stale/missing entries. Returns the new cache."""
+    new_cache: dict[str, dict] = {}
+    fetched = 0
+    # Live and soonest streams first, in case the per-run cap is reached.
+    for item in sorted(items, key=lambda i: (not i.is_live, abs(i.start - now))):
+        entry = cache.get(item.id)
+        stale = entry is None or datetime.fromisoformat(entry["fetched_at"]) < now - TITLE_TTL
+        if stale and fetcher is not None and fetched < MAX_TITLE_FETCHES:
+            if fetched:
+                sleep(PAUSE_BETWEEN_TITLES)
+            fetched += 1
+            try:
+                entry = {"title": fetcher(item.id), "fetched_at": now.astimezone(timezone.utc).isoformat(timespec="seconds")}
+            except TitleError as e:
+                log.warning("title lookup failed for %s: %s", item.id, e)
+        if entry is not None:
+            new_cache[item.id] = entry
+            item.title = entry["title"]
+    log.info("titles: %d fetched, %d/%d known", fetched, sum(i.title is not None for i in items), len(items))
+    return new_cache
+
+
 # ------------------------------------------------------------------------- output
 
 
@@ -324,11 +431,17 @@ def run(
     fetcher: Callable[[str], str] | None = None,
     now: datetime | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    title_fetcher: Callable[[str], str | None] | None = None,
+    title_cache: dict[str, dict] | None = None,
 ) -> int:
+    """Without `fetcher`, uses the network for pages and titles; tests pass fakes."""
     now = now or datetime.now(timezone.utc)
+    titles_path = output.with_name("titles.json")
     if fetcher is None:
         session = make_session()
         fetcher = lambda url: fetch(session, url, sleep)  # noqa: E731
+        title_fetcher = lambda vid: fetch_title(session, vid)  # noqa: E731
+        title_cache = load_title_cache(titles_path, session)
 
     try:
         items = scrape(fetcher, now, sleep)
@@ -339,6 +452,8 @@ def run(
         log.error("parsed 0 items, keeping existing %s", output)
         return 2
 
+    new_cache = fill_titles(items, title_cache or {}, title_fetcher, now, sleep)
+    write_atomic(titles_path, {"titles": new_cache})
     write_atomic(output, build_payload(items, now))
     live = sum(i.is_live for i in items)
     log.info("wrote %d items (%d live) to %s", len(items), live, output)

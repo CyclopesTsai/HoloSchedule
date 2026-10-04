@@ -373,6 +373,13 @@ main { padding-top: 8px; padding-bottom: 24px; min-height: 50vh; }
 
 .info { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 
+.who {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 .member {
   font-size: 1rem;
   font-weight: 600;
@@ -382,9 +389,9 @@ main { padding-top: 8px; padding-bottom: 24px; min-height: 50vh; }
 }
 
 .group {
-  align-self: flex-start;
-  max-width: 100%;
-  font-size: .75rem;
+  flex: 0 100 auto; /* gives way before the member name does */
+  min-width: 0;
+  font-size: .72rem;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -392,6 +399,21 @@ main { padding-top: 8px; padding-bottom: 24px; min-height: 50vh; }
   padding-left: 6px;
   border-left: 3px solid var(--group-color, var(--border));
 }
+
+.member { flex: 0 1 auto; min-width: 0; }
+
+.stream-title {
+  font-size: .82rem;
+  line-height: 1.35;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.entry.is-live .stream-title { color: var(--text); }
 
 .badge {
   display: none;
@@ -408,9 +430,22 @@ main { padding-top: 8px; padding-bottom: 24px; min-height: 50vh; }
 .entry.is-soon .badge-soon { display: inline-block; }
 /* Hidden badges take no grid cell; live and soon never show together. */
 
-@media (max-width: 420px) {
-  .entry-link { grid-template-columns: 3em 80px minmax(0, 1fr) auto; gap: 10px; padding: 8px 10px; }
-  .thumb { width: 80px; }
+/* Phones: the badge moves under the time so the name/title column gets the room. */
+@media (max-width: 480px) {
+  .entry-link {
+    grid-template-columns: 3.4em 80px minmax(0, 1fr);
+    grid-template-areas: "time thumb info" "badge thumb info";
+    grid-template-rows: 1fr 1fr;
+    column-gap: 10px;
+    row-gap: 2px;
+    padding: 8px 10px;
+  }
+  .time { grid-area: time; align-self: end; }
+  .thumb { grid-area: thumb; width: 80px; }
+  .info { grid-area: info; }
+  .badge { grid-area: badge; align-self: start; justify-self: start; font-size: .64rem; padding: 1px 5px; }
+  /* Without a badge the time sits in the middle of the row. */
+  .entry:not(.is-live):not(.is-soon) .time { grid-row: 1 / span 2; align-self: center; }
 }
 
 .empty { text-align: center; color: var(--muted); padding: 40px 0; }

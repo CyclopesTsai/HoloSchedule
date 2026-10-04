@@ -2,7 +2,7 @@
 # Copyright (C) 2026 CyclopesTsai
 import json
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -42,6 +42,7 @@ def test_first_item_fields(hololive_items):
         "url": "https://www.youtube.com/watch?v=nUBmqJrE2Ek",
         "thumbnail": "https://img.youtube.com/vi/nUBmqJrE2Ek/mqdefault.jpg",
         "is_live": False,
+        "title": None,
     }
 
 
@@ -252,7 +253,10 @@ def test_run_writes_payload(tmp_path):
     assert data["generated_at"] == "2026-10-04T04:50:00Z"
     assert len(data["items"]) == 113
     assert {i["group"] for i in data["items"]} == {"hololive", "HOLOSTARS"}
-    assert set(data["items"][0]) == {"id", "member", "group", "start", "url", "thumbnail", "is_live"}
+    assert set(data["items"][0]) == {"id", "member", "group", "start", "url", "thumbnail", "is_live", "title"}
+    # No title fetcher/cache given: titles stay null and an empty cache is written.
+    assert all(i["title"] is None for i in data["items"])
+    assert json.loads((tmp_path / "titles.json").read_text(encoding="utf-8")) == {"titles": {}}
 
 
 @pytest.mark.parametrize(
@@ -315,3 +319,130 @@ def test_fetch_does_not_retry_client_errors():
     with pytest.raises(ScrapeError):
         scrape.fetch(session, "u", sleep=lambda s: None)
     assert session.calls == 1
+
+
+# ------------------------------------------------------------------------ titles
+
+NOW_UTC = FIXTURE_NOW.astimezone(scrape.timezone.utc)
+
+
+def iso(dt: datetime) -> str:
+    return dt.astimezone(scrape.timezone.utc).isoformat(timespec="seconds")
+
+
+def test_fill_titles_uses_fresh_cache_and_refreshes_stale():
+    items = [make_item("a", "hololive", 10), make_item("b", "hololive", 11), make_item("c", "hololive", 12)]
+    cache = {
+        "a": {"title": "cached A", "fetched_at": iso(NOW_UTC - timedelta(hours=1))},  # fresh
+        "b": {"title": "old B", "fetched_at": iso(NOW_UTC - timedelta(hours=5))},  # stale
+        "gone": {"title": "x", "fetched_at": iso(NOW_UTC)},  # not in data any more
+    }
+    asked = []
+
+    def fetcher(vid):
+        asked.append(vid)
+        return f"new {vid}"
+
+    new_cache = scrape.fill_titles(items, cache, fetcher, FIXTURE_NOW, sleep=lambda s: None)
+    assert sorted(asked) == ["b", "c"]
+    assert [i.title for i in items] == ["cached A", "new b", "new c"]
+    assert set(new_cache) == {"a", "b", "c"}
+    assert new_cache["b"]["fetched_at"] == iso(FIXTURE_NOW)
+
+
+def test_fill_titles_keeps_old_title_on_transient_error():
+    items = [make_item("a", "hololive", 10)]
+    cache = {"a": {"title": "old A", "fetched_at": iso(NOW_UTC - timedelta(hours=5))}}
+
+    def failing(vid):
+        raise scrape.TitleError("boom")
+
+    new_cache = scrape.fill_titles(items, cache, failing, FIXTURE_NOW, sleep=lambda s: None)
+    assert items[0].title == "old A"
+    assert new_cache["a"] == cache["a"]
+
+
+def test_fill_titles_caches_unavailable_videos_as_null():
+    items = [make_item("members", "hololive", 10)]
+    new_cache = scrape.fill_titles(items, {}, lambda vid: None, FIXTURE_NOW, sleep=lambda s: None)
+    assert items[0].title is None
+    assert new_cache["members"]["title"] is None
+
+
+def test_fill_titles_respects_cap_and_prioritises_live(monkeypatch):
+    monkeypatch.setattr(scrape, "MAX_TITLE_FETCHES", 2)
+    items = [make_item(f"v{h}", "hololive", h) for h in range(0, 23)]
+    items[0].is_live = True  # 00:00, far from FIXTURE_NOW (13:50) but live
+    asked = []
+    scrape.fill_titles(items, {}, lambda vid: asked.append(vid) or vid, FIXTURE_NOW, sleep=lambda s: None)
+    assert asked == ["v0", "v14"]  # live first, then the stream closest to now
+
+
+def test_parse_title_cache_drops_malformed_entries():
+    raw = {
+        "titles": {
+            "ok": {"title": "t", "fetched_at": "2026-10-04T04:00:00+00:00"},
+            "null": {"title": None, "fetched_at": "2026-10-04T04:00:00+00:00"},
+            "nodate": {"title": "t"},
+            "baddate": {"title": "t", "fetched_at": "yesterday"},
+            "notdict": "t",
+        }
+    }
+    assert set(scrape.parse_title_cache(raw)) == {"ok", "null"}
+    assert scrape.parse_title_cache(["nope"]) == {}
+
+
+def test_load_title_cache_prefers_local_file(tmp_path):
+    local = tmp_path / "titles.json"
+    local.write_text(json.dumps({"titles": {"a": {"title": "A", "fetched_at": iso(NOW_UTC)}}}), encoding="utf-8")
+    assert scrape.load_title_cache(local, session=None)["a"]["title"] == "A"
+    local.write_text("{broken", encoding="utf-8")
+    assert scrape.load_title_cache(local, session=None) == {}
+
+
+class OEmbedSession:
+    def __init__(self, response):
+        self.response = response
+
+    def get(self, url, params=None, timeout=None):
+        assert url == scrape.OEMBED_URL and params["url"].endswith("v=abc")
+        if isinstance(self.response, Exception):
+            raise self.response
+        return self.response
+
+
+class JsonResponse(FakeResponse):
+    def __init__(self, status, payload=None):
+        super().__init__(status)
+        self.payload = payload
+
+    def json(self):
+        if self.payload is None:
+            raise ValueError("no json")
+        return self.payload
+
+
+def test_fetch_title_statuses():
+    assert scrape.fetch_title(OEmbedSession(JsonResponse(200, {"title": " 配信タイトル "})), "abc") == "配信タイトル"
+    assert scrape.fetch_title(OEmbedSession(JsonResponse(200, {"title": ""})), "abc") is None
+    assert scrape.fetch_title(OEmbedSession(JsonResponse(401)), "abc") is None  # members-only / private
+    assert scrape.fetch_title(OEmbedSession(JsonResponse(404)), "abc") is None
+    for bad in (JsonResponse(500), JsonResponse(429), JsonResponse(200), scrape.requests.ConnectionError("x")):
+        with pytest.raises(scrape.TitleError):
+            scrape.fetch_title(OEmbedSession(bad), "abc")
+
+
+def test_run_writes_titles(tmp_path):
+    out = tmp_path / "data.json"
+    cache = {"FCM3tqdSVH8": {"title": "cached", "fetched_at": iso(NOW_UTC)}}
+    code = scrape.run(
+        out, fake_fetcher(ALL_PAGES), FIXTURE_NOW, sleep=lambda s: None,
+        title_fetcher=lambda vid: f"T-{vid}", title_cache=cache,
+    )
+    assert code == 0
+    items = {i["id"]: i for i in json.loads(out.read_text(encoding="utf-8"))["items"]}
+    assert items["FCM3tqdSVH8"]["title"] == "cached"
+    assert items["nUBmqJrE2Ek"]["title"] == "T-nUBmqJrE2Ek"
+    titles = json.loads((tmp_path / "titles.json").read_text(encoding="utf-8"))["titles"]
+    assert len(titles) == len(items) == 113
+

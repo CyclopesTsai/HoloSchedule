@@ -22,7 +22,7 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
 ├── .github/workflows/
 │   ├── update.yml       # 測試 → 抓取 → 加版本參數 → 部署 Pages（cron / 手動 / push main）
 │   └── keepalive.yml    # 每月一次，避免排程因 60 天無活動被停用
-├── public/              # 靜態網站（不需 build）
+├── public/              # 靜態網站（不需 build）；data.json、titles.json 由 scrape.py 產生
 │   ├── index.html
 │   ├── style.css
 │   ├── app.js
@@ -69,11 +69,22 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
       "start": "2026-10-03T00:02:00+09:00",
       "url": "https://www.youtube.com/watch?v=FCM3tqdSVH8",
       "thumbnail": "https://img.youtube.com/vi/FCM3tqdSVH8/mqdefault.jpg",
-      "is_live": false
+      "is_live": false,
+      "title": "【妹に運転を教える】…"
     }
   ]
 }
 ```
+
+`title` 可能為 `null`（例如會員限定、私人或已刪除的影片，或尚未查到）。
+
+### 直播標題
+
+原站不提供標題，所以改由 YouTube 公開的 [oEmbed](https://oembed.com/) 端點（`https://www.youtube.com/oembed`）取得，**不需要 API key**。
+
+- 標題快取在 `titles.json`（與 `data.json` 一起部署到 Pages）。每次執行會先讀上一次部署的 `titles.json`，只查詢新出現或超過 3 小時未更新的影片；平常一次只需要幾個請求，沒有快取時（第一次）約 130 個。
+- 請求依序送出、間隔 0.2 秒，每次最多 150 個；直播中與時間最接近的節目優先。
+- 查詢失敗（網路錯誤、429、5xx）時保留舊標題，**不會讓整次更新失敗**；401／403／404（會員限定、私人、已刪除）記為 `null`。
 
 ### 穩健性
 
@@ -90,7 +101,7 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
 
 ## 前端功能
 
-- 清單式顯示，一筆直播一行（時間・縮圖・成員・團體・狀態）。
+- 清單式顯示，一筆直播一行（時間・縮圖・成員・團體・直播標題・狀態）；手機上狀態標記移到時間下方，讓名稱與標題有更多空間。
 - 依日期分組（以所選時區的日期計算），標示「今天／明天／後天」；**不顯示過去的日期**，但今天已結束的節目仍會保留（淡化顯示）。
 - 今天的清單順序為：已開始／已結束 → 所有直播中的節目（連成一塊，依開始時間排序）→「現在」分隔線 → 即將開始。直播中以紅色底色與 LIVE 標記顯示；前一天開始、仍在直播的節目也併入今天的直播區塊，並在時間上方標出日期。1 小時內開始的節目標示「N 分鐘後」。
 - 清單中有一條「現在 HH:MM」分隔線；開啟頁面（以及切換時區、團體、隱藏已結束）時會自動捲動到目前時間，分隔線位於畫面約 40% 處，上方保留剛開始的節目。自動重新整理不會移動捲動位置。
@@ -153,6 +164,7 @@ GitHub 官方文件：「In a public repository, scheduled workflows are automat
 - **GitHub Actions 的 cron 不準時**，高負載時可能延遲數分鐘到數十分鐘，甚至跳過；因此網頁上的資料可能落後 15 分鐘以上，「直播中」狀態也會有延遲。
 - 「已結束」是推測（不在直播中且開始超過 30 分鐘），原站沒有提供結束時間。
 - 只收錄 YouTube 連結；若原站出現其他平台的節目會被略過（log 會記錄）。
+- 直播標題最多可能落後約 3 小時（快取期限）；會員限定或私人影片拿不到標題。oEmbed 沒有正式的用量上限說明，若 YouTube 開始拒絕請求，只會少了標題，節目表照常更新。
 - 原站的 IP 封鎖或流量限制可能讓 GitHub runner 抓取失敗；不會嘗試任何繞過手段。
 - Pages 部署失敗或排程停用時，網頁會顯示舊資料，超過 1 小時會出現「資料可能已過期」。
 

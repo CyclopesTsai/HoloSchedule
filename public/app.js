@@ -164,6 +164,7 @@
         url,
         thumbnail: thumb,
         isLive: it.is_live === true,
+        title: typeof it.title === "string" && it.title.trim() ? it.title.trim() : null,
       });
     }
     items.sort((a, b) => a.start - b.start);
@@ -289,7 +290,8 @@
     const link = node.querySelector(".entry-link");
     link.href = it.url;
     const status = it.isLive ? "直播中，" : isSoon ? "即將開始，" : "";
-    link.setAttribute("aria-label", `${status}${formatTime(it.start)} ${it.member}（${it.group}）在 YouTube 開啟`);
+    const titlePart = it.title ? `：${it.title}` : "";
+    link.setAttribute("aria-label", `${status}${formatTime(it.start)} ${it.member}（${it.group}）${titlePart}，在 YouTube 開啟`);
 
     const img = node.querySelector("img");
     if (it.thumbnail) {
@@ -317,6 +319,13 @@
     }
     node.querySelector(".member").textContent = it.member;
     node.querySelector(".member").title = it.member;
+    const streamTitle = node.querySelector(".stream-title");
+    if (it.title) {
+      streamTitle.textContent = it.title;
+      streamTitle.title = it.title;
+    } else {
+      streamTitle.remove();
+    }
     const group = node.querySelector(".group");
     group.textContent = it.group;
     group.style.setProperty("--group-color", GROUP_COLOR[it.group] || "var(--border)");
