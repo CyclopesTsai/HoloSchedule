@@ -5,6 +5,7 @@
 (() => {
   const DATA_URL = "data.json";
   const REFRESH_MS = 5 * 60 * 1000;   // re-fetch data.json
+  const LOAD_TIMEOUT_MS = 20 * 1000;  // give up on a hung data.json request
   const TICK_MS = 60 * 1000;          // re-render relative labels
   const STALE_MS = 60 * 60 * 1000;    // generated_at older than this → warning
   const SOON_MS = 60 * 60 * 1000;     // "即將開始" window
@@ -200,8 +201,12 @@
   async function load() {
     if (loading) return;
     loading = true;
+    // Without a timeout, one request that never settles (e.g. across a
+    // sleep/network change) would leave `loading` set and stop all refreshes.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), LOAD_TIMEOUT_MS);
     try {
-      const res = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: "no-store", signal: ctrl.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       state.data = sanitize(await res.json());
       pruneEntries();
@@ -210,9 +215,10 @@
       lastLoad = Date.now();
       renderGroups();
     } catch (err) {
-      state.loadError = err;
+      state.loadError = err.name === "AbortError" ? new Error("逾時") : err;
       console.error(err);
     } finally {
+      clearTimeout(timer);
       loading = false;
       render();
     }
