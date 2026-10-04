@@ -31,6 +31,14 @@
     tz: $("tz"),
     groups: $("groups"),
     hideEnded: $("hide-ended"),
+    expPlayer: $("exp-player"),
+    player: $("player"),
+    playerMember: $("player-member"),
+    playerTitle: $("player-title"),
+    playerYt: $("player-yt"),
+    playerClose: $("player-close"),
+    playerVideo: $("player-video"),
+    playerChat: $("player-chat"),
     gear: $("chip-settings-btn"),
     chipSettings: $("chip-settings"),
     chipSettingsList: $("chip-settings-list"),
@@ -45,6 +53,8 @@
     tz: "Asia/Taipei",
     group: "all",
     hideEnded: false,
+    expPlayer: false,    // experimental: open streams in the side player
+    playingId: null,
     hiddenGroups: new Set(DEFAULT_HIDDEN_GROUPS),
   };
 
@@ -60,6 +70,7 @@
       if (saved.tz in TZ_LABEL) state.tz = saved.tz;
       if (typeof saved.group === "string") state.group = saved.group;
       state.hideEnded = saved.hideEnded === true;
+      state.expPlayer = saved.expPlayer === true;
       if (Array.isArray(saved.hiddenGroups)) state.hiddenGroups = new Set(saved.hiddenGroups.map(String));
     } catch (_) { /* storage unavailable: use defaults */ }
   }
@@ -70,6 +81,7 @@
         tz: state.tz,
         group: state.group,
         hideEnded: state.hideEnded,
+        expPlayer: state.expPlayer,
         hiddenGroups: [...state.hiddenGroups],
       }));
     } catch (_) { /* ignore */ }
@@ -296,6 +308,7 @@
 
   function createEntry(it) {
     const node = els.tpl.content.firstElementChild.cloneNode(true);
+    node.dataset.id = it.id;
     node.querySelector(".entry-link").href = it.url;
 
     const img = node.querySelector("img");
@@ -340,6 +353,7 @@
     node.classList.toggle("is-live", st === "live");
     node.classList.toggle("is-soon", isSoon);
     node.classList.toggle("is-ended", st === "ended");
+    node.classList.toggle("is-playing", it.id === state.playingId);
     node.querySelector(".badge-soon").textContent =
       st === "pending" ? "即將開始" : isSoon ? `${Math.max(1, Math.ceil(untilStart / 60000))} 分鐘後` : "";
 
@@ -462,15 +476,98 @@
     window.scrollTo(0, Math.max(0, top));
   }
 
+  // ------------------------------------------------- experimental player
+
+  const VIDEO_ID_RE = /^[\w-]{11}$/;
+
+  function makeFrame(src, title, allow) {
+    const f = document.createElement("iframe");
+    f.src = src;
+    f.title = title;
+    if (allow) f.allow = allow;
+    f.referrerPolicy = "strict-origin-when-cross-origin";
+    return f;
+  }
+
+  function playerNote(text) {
+    const p = document.createElement("p");
+    p.className = "player-note";
+    p.textContent = text;
+    return p;
+  }
+
+  function openPlayer(it) {
+    if (!VIDEO_ID_RE.test(it.id)) return;
+    const id = it.id;
+    state.playingId = id;
+    els.playerMember.textContent = it.member;
+    els.playerTitle.textContent = it.title || "";
+    els.playerTitle.title = it.title || "";
+    els.playerYt.href = it.url;
+
+    els.playerVideo.replaceChildren(makeFrame(
+      `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`,
+      `${it.member} 的直播`,
+      "autoplay; encrypted-media; picture-in-picture; fullscreen",
+    ));
+
+    // YouTube only frames live chat for the domain named in embed_domain, and
+    // there is no embeddable chat once a stream has ended.
+    const host = location.hostname;
+    if (streamState(it, Date.now()) === "ended") {
+      els.playerChat.replaceChildren(playerNote("直播已結束，無法嵌入聊天室。"));
+    } else if (!host) {
+      els.playerChat.replaceChildren(playerNote("此環境無法嵌入聊天室。"));
+    } else {
+      els.playerChat.replaceChildren(makeFrame(
+        `https://www.youtube.com/live_chat?v=${id}&embed_domain=${encodeURIComponent(host)}`,
+        `${it.member} 的聊天室`,
+      ));
+    }
+
+    els.player.hidden = false;
+    document.body.classList.add("player-open");
+    render();
+    // The list got narrower; keep the clicked row in view.
+    els.days.querySelector(`.entry[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" });
+  }
+
+  function closePlayer() {
+    if (state.playingId === null) return;
+    state.playingId = null;
+    els.playerVideo.replaceChildren();
+    els.playerChat.replaceChildren();
+    els.player.hidden = true;
+    document.body.classList.remove("player-open");
+    render();
+  }
+
   // --------------------------------------------------------------- events
 
   function bind() {
     els.tz.value = state.tz;
     els.hideEnded.checked = state.hideEnded;
+    els.expPlayer.checked = state.expPlayer;
 
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
     els.tz.addEventListener("change", () => { state.tz = els.tz.value; savePrefs(); pendingScroll = true; render(); });
+    els.expPlayer.addEventListener("change", () => {
+      state.expPlayer = els.expPlayer.checked;
+      savePrefs();
+      if (!state.expPlayer) closePlayer();
+    });
+    els.days.addEventListener("click", (e) => {
+      if (!state.expPlayer || !state.data) return;
+      const link = e.target.closest(".entry-link");
+      // Modified clicks keep the browser's own behaviour (new tab/window).
+      if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const it = state.data.items.find((x) => x.id === link.closest(".entry").dataset.id);
+      if (!it) return;
+      e.preventDefault();
+      if (it.id !== state.playingId) openPlayer(it);
+    });
+    els.playerClose.addEventListener("click", closePlayer);
     els.hideEnded.addEventListener("change", () => { state.hideEnded = els.hideEnded.checked; savePrefs(); pendingScroll = true; render(); });
     els.groups.addEventListener("click", (e) => {
       const btn = e.target.closest(".chip");
@@ -499,9 +596,12 @@
       }
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !els.chipSettings.hidden) {
+      if (e.key !== "Escape") return;
+      if (!els.chipSettings.hidden) {
         setChipSettingsOpen(false);
         els.gear.focus();
+      } else if (state.playingId !== null) {
+        closePlayer();
       }
     });
 

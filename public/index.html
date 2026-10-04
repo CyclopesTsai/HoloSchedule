@@ -48,6 +48,12 @@
         <p class="chip-settings-title">要顯示的團體</p>
         <div id="chip-settings-list"></div>
         <p class="chip-settings-note">未勾選的團體不會出現在清單中（包含「全部」）。</p>
+        <p class="chip-settings-title">試驗性功能</p>
+        <label class="toggle setting">
+          <input type="checkbox" id="exp-player">
+          <span>點擊節目時在右側播放影片與聊天室</span>
+        </label>
+        <p class="chip-settings-note">⌘／Ctrl＋點擊或中鍵仍會在新分頁開啟 YouTube。聊天室需登入 YouTube 才能發言。</p>
       </div>
     </div>
   </header>
@@ -64,6 +70,21 @@
       <p>本站程式碼以 <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer">GNU AGPL-3.0</a> 授權，<a href="https://github.com/CyclopesTsai/HoloSchedule" target="_blank" rel="noopener noreferrer">原始碼在 GitHub</a>。</p>
     </div>
   </footer>
+
+  <!-- Experimental side player (⚙ → 試驗性功能). Iframes are created on open
+       and removed on close so nothing keeps playing or loading in the background. -->
+  <aside class="player" id="player" hidden aria-label="節目播放器">
+    <div class="player-head">
+      <div class="player-info">
+        <strong id="player-member"></strong>
+        <span id="player-title"></span>
+      </div>
+      <a class="player-btn" id="player-yt" target="_blank" rel="noopener noreferrer">YouTube ↗</a>
+      <button type="button" class="player-btn player-close" id="player-close" aria-label="關閉播放器">✕</button>
+    </div>
+    <div class="player-video" id="player-video"></div>
+    <div class="player-chat" id="player-chat"></div>
+  </aside>
 
   <template id="entry-tpl">
     <li class="entry">
