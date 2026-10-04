@@ -31,7 +31,7 @@
     liveList: $("live-list"),
     days: $("days"),
     empty: $("empty"),
-    tpl: $("card-tpl"),
+    tpl: $("entry-tpl"),
   };
 
   const state = {
@@ -100,7 +100,7 @@
     const weekday = new Intl.DateTimeFormat("zh-TW", { weekday: "short", timeZone: "UTC" })
       .format(new Date(keyToUTC(key)));
     const diff = Math.round((keyToUTC(key) - keyToUTC(todayKey)) / 86400000);
-    const rel = { "-1": "昨天", "0": "今天", "1": "明天", "2": "後天" }[diff] || "";
+    const rel = { "0": "今天", "1": "明天", "2": "後天" }[diff] || "";
     return { text: `${m}/${d}（${weekday.replace("週", "")}）`, rel };
   }
 
@@ -171,28 +171,33 @@
 
   // --------------------------------------------------------------- render
 
+  // Built once per load; counts are filled in by updateGroupCounts on every render.
   function renderGroups() {
-    const counts = new Map();
-    for (const it of state.data.items) counts.set(it.group, (counts.get(it.group) || 0) + 1);
-    const groups = [...counts.keys()].sort((a, b) => {
+    const groups = [...new Set(state.data.items.map((it) => it.group))].sort((a, b) => {
       const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
     });
-    if (state.group !== "all" && !counts.has(state.group)) state.group = "all";
+    if (state.group !== "all" && !groups.includes(state.group)) state.group = "all";
 
     const frag = document.createDocumentFragment();
-    const make = (value, label, count) => {
+    for (const [value, label] of [["all", "全部"], ...groups.map((g) => [g, g])]) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "chip";
       b.dataset.group = value;
-      b.textContent = count == null ? label : `${label} ${count}`;
+      b.dataset.label = label;
       b.setAttribute("aria-pressed", String(state.group === value));
-      return b;
-    };
-    frag.append(make("all", `全部 ${state.data.items.length}`));
-    for (const g of groups) frag.append(make(g, g, counts.get(g)));
+      frag.append(b);
+    }
     els.groups.replaceChildren(frag);
+  }
+
+  function updateGroupCounts(items) {
+    const counts = new Map([["all", items.length]]);
+    for (const it of items) counts.set(it.group, (counts.get(it.group) || 0) + 1);
+    for (const b of els.groups.querySelectorAll(".chip")) {
+      b.textContent = `${b.dataset.label} ${counts.get(b.dataset.group) || 0}`;
+    }
   }
 
   function renderStatus(now) {
@@ -213,7 +218,7 @@
     els.stale.hidden = !(d.generatedAt === null || now - d.generatedAt > STALE_MS);
   }
 
-  function buildCard(it, now) {
+  function buildEntry(it, now) {
     const node = els.tpl.content.firstElementChild.cloneNode(true);
     const untilStart = it.start - now;
     const isSoon = !it.isLive && untilStart >= 0 && untilStart <= SOON_MS;
@@ -222,7 +227,7 @@
     node.classList.toggle("is-soon", isSoon);
     node.classList.toggle("is-ended", isEnded);
 
-    const link = node.querySelector(".card-link");
+    const link = node.querySelector(".entry-link");
     link.href = it.url;
     const status = it.isLive ? "直播中，" : isSoon ? "即將開始，" : "";
     link.setAttribute("aria-label", `${status}${formatTime(it.start)} ${it.member}（${it.group}）在 YouTube 開啟`);
@@ -256,17 +261,22 @@
     renderStatus(now);
     if (!state.data) return;
 
+    // Past days are hidden; today's ended streams stay. Live streams always show,
+    // even if they started yesterday.
+    const todayKey = dayKey(new Date(now));
+    const current = state.data.items.filter((it) => it.isLive || dayKey(it.start) >= todayKey);
+    updateGroupCounts(current);
+
     const q = fold(state.query).trim();
-    const visible = state.data.items.filter((it) =>
+    const visible = current.filter((it) =>
       (state.group === "all" || it.group === state.group) &&
       (!q || it.searchKey.includes(q)) &&
       !(state.hideEnded && !it.isLive && now - it.start > ENDED_AFTER_MS));
 
     const live = visible.filter((it) => it.isLive);
     els.liveSection.hidden = live.length === 0;
-    els.liveList.replaceChildren(...live.map((it) => buildCard(it, now)));
+    els.liveList.replaceChildren(...live.map((it) => buildEntry(it, now)));
 
-    const todayKey = dayKey(new Date(now));
     const byDay = new Map();
     for (const it of visible) {
       if (it.isLive) continue;
@@ -294,8 +304,8 @@
       count.textContent = `${items.length} 筆`;
       h.append(count);
       const list = document.createElement("ul");
-      list.className = "grid";
-      list.append(...items.map((it) => buildCard(it, now)));
+      list.className = "list";
+      list.append(...items.map((it) => buildEntry(it, now)));
       section.append(h, list);
       frag.append(section);
     }

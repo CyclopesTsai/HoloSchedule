@@ -53,7 +53,7 @@
   <main class="wrap" id="main">
     <section id="live-section" class="live-section" hidden aria-labelledby="live-heading">
       <h2 id="live-heading" class="day-heading live-heading"><span class="dot" aria-hidden="true"></span>直播中</h2>
-      <ul class="grid" id="live-list"></ul>
+      <ul class="list" id="live-list"></ul>
     </section>
     <div id="days"></div>
     <p class="empty" id="empty" hidden>沒有符合條件的節目。</p>
@@ -67,19 +67,19 @@
     </div>
   </footer>
 
-  <template id="card-tpl">
-    <li class="card">
-      <a class="card-link" target="_blank" rel="noopener noreferrer">
+  <template id="entry-tpl">
+    <li class="entry">
+      <a class="entry-link" target="_blank" rel="noopener noreferrer">
+        <time class="time"></time>
         <div class="thumb">
           <img alt="" loading="lazy" decoding="async" width="320" height="180">
-          <span class="badge badge-live">LIVE</span>
-          <span class="badge badge-soon"></span>
         </div>
-        <div class="meta">
-          <time class="time"></time>
+        <div class="info">
           <span class="member"></span>
           <span class="group"></span>
         </div>
+        <span class="badge badge-live">LIVE</span>
+        <span class="badge badge-soon"></span>
       </a>
     </li>
   </template>
