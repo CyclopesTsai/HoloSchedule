@@ -10,6 +10,8 @@
   const STORAGE_KEY = "holoschedule:prefs";
 
   const GROUP_ORDER = ["hololive", "HOLOSTARS", "HOLOSTARS English", "mekPark", "COVER"];
+  // Groups without their own filter chip (their streams still show under 全部).
+  const NO_CHIP_GROUPS = new Set(["HOLOSTARS", "HOLOSTARS English"]);
   const GROUP_COLOR = {
     "hololive": "var(--g-hololive)",
     "HOLOSTARS": "var(--g-holostars)",
@@ -180,10 +182,12 @@
 
   // Built once per load; counts are filled in by updateGroupCounts on every render.
   function renderGroups() {
-    const groups = [...new Set(state.data.items.map((it) => it.group))].sort((a, b) => {
-      const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
-    });
+    const groups = [...new Set(state.data.items.map((it) => it.group))]
+      .filter((g) => !NO_CHIP_GROUPS.has(g))
+      .sort((a, b) => {
+        const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+      });
     if (state.group !== "all" && !groups.includes(state.group)) state.group = "all";
 
     const frag = document.createDocumentFragment();
