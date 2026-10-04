@@ -109,17 +109,8 @@ h1 {
 
 .status { margin: 0; color: var(--on-bar-muted); font-size: .78rem; }
 .status.error { color: #ffc2b8; }
+.status.is-stale { color: #ffb35c; font-weight: 700; }
 @media (min-width: 600px) { .status { margin-left: auto; } }
-
-.stale {
-  margin: 6px 0 0;
-  padding: 6px 10px;
-  border-radius: var(--radius);
-  background: #3b2a14;
-  color: #f3d77a;
-  font-size: .85rem;
-}
-.stale a { color: inherit; }
 
 .filter-bar {
   margin-top: 8px;

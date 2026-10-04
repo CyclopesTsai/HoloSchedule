@@ -27,7 +27,6 @@
   const $ = (id) => document.getElementById(id);
   const els = {
     status: $("status"),
-    stale: $("stale"),
     tz: $("tz"),
     groups: $("groups"),
     hideEnded: $("hide-ended"),
@@ -274,7 +273,8 @@
     if (!d) {
       els.status.textContent = state.loadError ? `讀取失敗：${state.loadError.message}` : "讀取中…";
       els.status.classList.toggle("error", !!state.loadError);
-      els.stale.hidden = true;
+      els.status.classList.remove("is-stale");
+      els.status.removeAttribute("title");
       return;
     }
     let text = "最後更新：";
@@ -284,7 +284,11 @@
     if (state.loadError) text += "　· 重新讀取失敗，顯示的是先前的資料";
     els.status.textContent = text;
     els.status.classList.toggle("error", !!state.loadError);
-    els.stale.hidden = !(d.generatedAt === null || now - d.generatedAt > STALE_MS);
+    // Over an hour old: colour the timestamp instead of showing a banner.
+    const stale = d.generatedAt === null || now - d.generatedAt > STALE_MS;
+    els.status.classList.toggle("is-stale", stale);
+    if (stale) els.status.title = "資料超過 1 小時未更新，可能已過期，請以原站為準";
+    else els.status.removeAttribute("title");
   }
 
   // Row nodes are reused across renders (filters, timezone, the per-minute
