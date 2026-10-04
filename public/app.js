@@ -323,23 +323,32 @@
     return node;
   }
 
+  // live: the site marks it live. pending: start time passed less than
+  // ENDED_AFTER_MS ago but not live (yet), e.g. a stream running a few minutes
+  // late or data that hasn't caught up. ended: started longer ago, not live.
+  function streamState(it, now) {
+    if (it.isLive) return "live";
+    if (it.start > now) return "upcoming";
+    return now - it.start <= ENDED_AFTER_MS ? "pending" : "ended";
+  }
+
   // Everything that depends on the clock or the selected timezone.
   function updateEntry(node, it, now, todayKey) {
+    const st = streamState(it, now);
     const untilStart = it.start - now;
-    const isSoon = !it.isLive && untilStart >= 0 && untilStart <= SOON_MS;
-    const isEnded = !it.isLive && -untilStart > ENDED_AFTER_MS;
-    node.classList.toggle("is-live", it.isLive);
+    const isSoon = st === "pending" || (st === "upcoming" && untilStart <= SOON_MS);
+    node.classList.toggle("is-live", st === "live");
     node.classList.toggle("is-soon", isSoon);
-    node.classList.toggle("is-ended", isEnded);
+    node.classList.toggle("is-ended", st === "ended");
     node.querySelector(".badge-soon").textContent =
-      isSoon ? `${Math.max(1, Math.ceil(untilStart / 60000))} 分鐘後` : "";
+      st === "pending" ? "即將開始" : isSoon ? `${Math.max(1, Math.ceil(untilStart / 60000))} 分鐘後` : "";
 
     const timeText = formatTime(it.start);
     const time = node.querySelector(".time");
     time.textContent = timeText;
     time.dateTime = it.start.toISOString();
-    if (it.isLive && dayKey(it.start) !== todayKey) {
-      // A live stream that started on another day is listed under today.
+    if ((st === "live" || st === "pending") && dayKey(it.start) !== todayKey) {
+      // A live/pending stream that started on another day is listed under today.
       const day = document.createElement("small");
       day.className = "time-day";
       const p = partsOf(it.start, MONTH_DAY_OPTS);
@@ -360,34 +369,37 @@
     if (!state.data) return;
 
     // Groups turned off in ⚙ are dropped entirely. Past days are hidden; today's
-    // ended streams stay. Live streams always show, even if they started yesterday.
+    // ended streams stay. Live and pending streams always show, even if they
+    // started yesterday.
     const todayKey = dayKey(new Date(now));
-    const current = state.data.items.filter((it) =>
-      !state.hiddenGroups.has(it.group) && (it.isLive || dayKey(it.start) >= todayKey));
+    const visible = state.data.items.filter((it) => {
+      if (state.hiddenGroups.has(it.group)) return false;
+      if (state.group !== "all" && it.group !== state.group) return false;
+      const st = streamState(it, now);
+      if (st === "ended") return !state.hideEnded && dayKey(it.start) >= todayKey;
+      return st !== "upcoming" || dayKey(it.start) >= todayKey;
+    });
 
-    const visible = current.filter((it) =>
-      (state.group === "all" || it.group === state.group) &&
-      !(state.hideEnded && !it.isLive && now - it.start > ENDED_AFTER_MS));
-
-    // Today's list reads: started/ended → every live stream as one block →
-    // 現在 → upcoming. Live streams are pulled out of strict time order so an
-    // ended stream never sits between two live ones.
+    // Today's list reads: ended → live → pending → 現在 → upcoming. Live and
+    // pending streams are pulled out of strict time order so an ended stream
+    // never sits between two live ones and a late stream never sits above them.
     const NOW = Symbol("now");
     const days = new Map();
     const dayRows = (key) => {
       if (!days.has(key)) days.set(key, []);
       return days.get(key);
     };
-    const live = visible.filter((it) => it.isLive);
-    const upcomingToday = [];
+    const live = [], pending = [], upcomingToday = [];
     for (const it of visible) {
-      if (it.isLive) continue;
+      const st = streamState(it, now);
       const key = dayKey(it.start);
-      if (key === todayKey && it.start > now) upcomingToday.push(it);
+      if (st === "live") live.push(it);
+      else if (st === "pending") pending.push(it);
+      else if (st === "upcoming" && key === todayKey) upcomingToday.push(it);
       else dayRows(key).push(it);
     }
-    if (live.length || upcomingToday.length || days.has(todayKey)) {
-      dayRows(todayKey).push(...live, NOW, ...upcomingToday);
+    if (live.length || pending.length || upcomingToday.length || days.has(todayKey)) {
+      dayRows(todayKey).push(...live, ...pending, NOW, ...upcomingToday);
     } else if (days.size) {
       // Nothing today: mark "now" at the top of the next day.
       days.get([...days.keys()].sort()[0]).unshift(NOW);
