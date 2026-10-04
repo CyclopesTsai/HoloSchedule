@@ -547,6 +547,8 @@ body.resizing iframe { pointer-events: none; }
   cursor: pointer;
 }
 .player-btn:hover { border-color: var(--gold-light); color: var(--gold-light); }
+.player-btn.is-primary { background: var(--gold-light); border-color: var(--gold-light); color: var(--ink); font-weight: 700; }
+.player-btn.is-primary:hover { color: var(--ink); filter: brightness(1.08); }
 .player-close { width: 32px; height: 32px; padding: 0; }
 
 .player-video { flex: 0 0 auto; aspect-ratio: 16 / 9; background: #000; }

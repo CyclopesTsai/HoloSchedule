@@ -547,7 +547,10 @@
       ytPlayer = new YT.Player(holder, {
         videoId: id,
         playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
-        events: { onReady: () => watchStatus(it, token) },
+        events: {
+          onReady: () => watchStatus(it, token),
+          onError: (e) => onPlayerError(e.data, token),
+        },
       });
     }).catch(() => {
       if (token !== playerToken) return;
@@ -594,6 +597,9 @@
   //   live      isLive && isManifestless, duration 0
   //   upcoming  isLive && !isManifestless, duration 0
   //   ended     !isLive, duration > 0 (the archive's length)
+  //   unplayable  isPlayable === false (errorCode "auth") or player error
+  //               101/150 — e.g. members-only for a non-member, age-restricted
+  //               or embedding disabled; the embed can't tell these apart.
   // Verdicts override the data in this browser only, until data.json is
   // regenerated after the check (or OVERRIDE_TTL_MS passes).
 
@@ -664,6 +670,7 @@
     try {
       const vd = ytPlayer?.getVideoData?.();
       if (!vd || vd.video_id !== id) return null;
+      if (vd.isPlayable === false || vd.errorCode) return "unplayable";
       const duration = ytPlayer.getDuration?.() || 0;
       if (vd.isLive && vd.isManifestless) return "live";
       if (vd.isLive) return "upcoming";
@@ -695,7 +702,28 @@
     }, STATUS_POLL_MS);
   }
 
+  const UNPLAYABLE_TEXT = "無法在這裡播放：可能為會員限定或不允許嵌入，請點「YouTube ↗」觀看";
+
+  function showUnplayable(text) {
+    setPlayerStatus(text);
+    els.playerYt.classList.add("is-primary");
+  }
+
+  // YouTube player errors: 100 not found/private, 101/150 not embeddable
+  // (members-only streams for non-members land here too), 2/5 bad request.
+  function onPlayerError(code, token) {
+    if (token !== playerToken) return;
+    clearInterval(statusTimer);
+    if (code === 101 || code === 150) showUnplayable(UNPLAYABLE_TEXT);
+    else if (code === 100) showUnplayable("影片不存在或已設為私人");
+    else showUnplayable(`播放器發生錯誤（代碼 ${code}），請點「YouTube ↗」觀看`);
+  }
+
   function applyVerdict(it, verdict) {
+    if (verdict === "unplayable") {
+      showUnplayable(UNPLAYABLE_TEXT);
+      return; // says nothing about whether it is live
+    }
     setPlayerStatus({ live: "YouTube 狀態：直播中", ended: "YouTube 狀態：已結束", upcoming: "YouTube 狀態：尚未開始" }[verdict]);
     if (verdict === "upcoming" || it.start > Date.now()) return;
     const live = verdict === "live";
@@ -713,6 +741,7 @@
     try { ytPlayer?.destroy(); } catch (_) { /* ignore */ }
     ytPlayer = null;
     setPlayerStatus("");
+    els.playerYt.classList.remove("is-primary");
   }
 
   // Player width: dragged/keyed by the user, kept within what leaves the list usable.
