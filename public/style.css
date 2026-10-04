@@ -204,18 +204,26 @@ main { padding-top: 8px; padding-bottom: 24px; min-height: 50vh; }
 }
 .day-heading .count { margin-left: auto; font-size: .8rem; color: var(--muted); font-weight: normal; }
 
-.live-heading { color: var(--live); align-items: center; }
-.dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: var(--live);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 60%, transparent);
-  animation: pulse 1.8s infinite;
+.now-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  color: var(--accent);
+  font-size: .78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-top: 1px solid var(--border);
 }
-@keyframes pulse {
-  70% { box-shadow: 0 0 0 8px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
+.now-line::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
 }
-@media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+.now-line:first-child { border-top: 0; }
 
 /* One stream per row: time · thumbnail · member/group · badge */
 .list {

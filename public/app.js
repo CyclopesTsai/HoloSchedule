@@ -27,8 +27,6 @@
     tz: $("tz"),
     groups: $("groups"),
     hideEnded: $("hide-ended"),
-    liveSection: $("live-section"),
-    liveList: $("live-list"),
     days: $("days"),
     empty: $("empty"),
     tpl: $("entry-tpl"),
@@ -42,6 +40,10 @@
     query: "",
     hideEnded: false,
   };
+
+  // Scroll to "now" after the next render that has data (initial load, or the
+  // view changed). Auto-refresh and the per-minute tick never move the page.
+  let pendingScroll = true;
 
   // ---------------------------------------------------------------- prefs
 
@@ -273,18 +275,14 @@
       (!q || it.searchKey.includes(q)) &&
       !(state.hideEnded && !it.isLive && now - it.start > ENDED_AFTER_MS));
 
-    const live = visible.filter((it) => it.isLive);
-    els.liveSection.hidden = live.length === 0;
-    els.liveList.replaceChildren(...live.map((it) => buildEntry(it, now)));
-
     const byDay = new Map();
     for (const it of visible) {
-      if (it.isLive) continue;
       const key = dayKey(it.start);
       if (!byDay.has(key)) byDay.set(key, []);
       byDay.get(key).push(it);
     }
 
+    const lists = new Map();
     const frag = document.createDocumentFragment();
     for (const [key, items] of byDay) {
       const section = document.createElement("section");
@@ -305,12 +303,52 @@
       h.append(count);
       const list = document.createElement("ul");
       list.className = "list";
-      list.append(...items.map((it) => buildEntry(it, now)));
+      for (const it of items) list.append(buildEntry(it, now));
+      lists.set(key, list);
       section.append(h, list);
       frag.append(section);
     }
+    const nowLine = insertNowLine(visible, lists, todayKey, now);
     els.days.replaceChildren(frag);
     els.empty.hidden = visible.length > 0;
+
+    if (pendingScroll) {
+      pendingScroll = false;
+      if (nowLine && !state.query) requestAnimationFrame(() => scrollToNow(nowLine));
+    }
+  }
+
+  // A "現在 HH:MM" row before the first stream that hasn't started yet.
+  function insertNowLine(visible, lists, todayKey, now) {
+    if (!lists.size) return null;
+    const li = document.createElement("li");
+    li.className = "now-line";
+    const label = document.createElement("span");
+    label.textContent = `現在 ${formatTime(new Date(now))}`;
+    li.append(label);
+
+    const index = visible.findIndex((it) => it.start > now);
+    const next = index >= 0 ? visible[index] : null;
+    const todayList = lists.get(todayKey);
+    if (next && (dayKey(next.start) === todayKey || !todayList)) {
+      // Entries are appended in the same order as `visible`, so count within the day.
+      const nextKey = dayKey(next.start);
+      const before = visible.slice(0, index).filter((it) => dayKey(it.start) === nextKey).length;
+      const list = lists.get(nextKey);
+      list.insertBefore(li, list.children[before] || null);
+    } else {
+      (todayList || [...lists.values()].pop()).append(li);
+    }
+    return li;
+  }
+
+  // Put the "now" row ~40% down the visible area, so the streams that just
+  // started (usually the live ones) stay in view above it.
+  function scrollToNow(el) {
+    const stickyHeight = document.querySelector(".controls").offsetHeight;
+    const context = (window.innerHeight - stickyHeight) * 0.4;
+    const top = el.getBoundingClientRect().top + window.scrollY - stickyHeight - context;
+    window.scrollTo({ top: Math.max(0, top), behavior: "instant" });
   }
 
   // --------------------------------------------------------------- events
@@ -319,8 +357,10 @@
     els.tz.value = state.tz;
     els.hideEnded.checked = state.hideEnded;
 
-    els.tz.addEventListener("change", () => { state.tz = els.tz.value; savePrefs(); render(); });
-    els.hideEnded.addEventListener("change", () => { state.hideEnded = els.hideEnded.checked; savePrefs(); render(); });
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+
+    els.tz.addEventListener("change", () => { state.tz = els.tz.value; savePrefs(); pendingScroll = true; render(); });
+    els.hideEnded.addEventListener("change", () => { state.hideEnded = els.hideEnded.checked; savePrefs(); pendingScroll = true; render(); });
     els.search.addEventListener("input", () => { state.query = els.search.value; render(); });
     els.groups.addEventListener("click", (e) => {
       const btn = e.target.closest(".chip");
@@ -328,6 +368,7 @@
       state.group = btn.dataset.group;
       for (const b of els.groups.querySelectorAll(".chip")) b.setAttribute("aria-pressed", String(b === btn));
       savePrefs();
+      pendingScroll = true;
       render();
     });
 
