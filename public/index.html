@@ -74,6 +74,8 @@
   <!-- Experimental side player (⚙ → 試驗性功能). Iframes are created on open
        and removed on close so nothing keeps playing or loading in the background. -->
   <aside class="player" id="player" hidden aria-label="節目播放器">
+    <div class="player-resizer" id="player-resizer" role="separator" tabindex="0"
+         aria-orientation="vertical" aria-label="調整播放器寬度（拖曳或左右鍵，雙擊還原）"></div>
     <div class="player-head">
       <div class="player-info">
         <strong id="player-member"></strong>

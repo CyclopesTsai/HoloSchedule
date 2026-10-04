@@ -39,6 +39,7 @@
     playerClose: $("player-close"),
     playerVideo: $("player-video"),
     playerChat: $("player-chat"),
+    playerResizer: $("player-resizer"),
     gear: $("chip-settings-btn"),
     chipSettings: $("chip-settings"),
     chipSettingsList: $("chip-settings-list"),
@@ -55,6 +56,7 @@
     hideEnded: false,
     expPlayer: false,    // experimental: open streams in the side player
     playingId: null,
+    playerWidth: null,   // px chosen by dragging; null = CSS default
     hiddenGroups: new Set(DEFAULT_HIDDEN_GROUPS),
   };
 
@@ -71,6 +73,7 @@
       if (typeof saved.group === "string") state.group = saved.group;
       state.hideEnded = saved.hideEnded === true;
       state.expPlayer = saved.expPlayer === true;
+      if (Number.isFinite(saved.playerWidth)) state.playerWidth = saved.playerWidth;
       if (Array.isArray(saved.hiddenGroups)) state.hiddenGroups = new Set(saved.hiddenGroups.map(String));
     } catch (_) { /* storage unavailable: use defaults */ }
   }
@@ -82,6 +85,7 @@
         group: state.group,
         hideEnded: state.hideEnded,
         expPlayer: state.expPlayer,
+        playerWidth: state.playerWidth,
         hiddenGroups: [...state.hiddenGroups],
       }));
     } catch (_) { /* ignore */ }
@@ -532,6 +536,61 @@
     els.days.querySelector(`.entry[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" });
   }
 
+  // Player width: dragged/keyed by the user, kept within what leaves the list usable.
+  const PLAYER_MIN_W = 320;
+  const LIST_MIN_W = 420;
+
+  function clampPlayerWidth(w) {
+    const max = Math.max(PLAYER_MIN_W, Math.min(window.innerWidth - LIST_MIN_W, window.innerWidth * 0.75));
+    return Math.round(Math.min(Math.max(w, PLAYER_MIN_W), max));
+  }
+
+  function applyPlayerWidth() {
+    const root = document.documentElement.style;
+    if (state.playerWidth === null) root.removeProperty("--player-w");
+    else root.setProperty("--player-w", `${clampPlayerWidth(state.playerWidth)}px`);
+  }
+
+  function bindPlayerResizer() {
+    const handle = els.playerResizer;
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      // Iframes would swallow pointer events mid-drag; .resizing disables them.
+      document.body.classList.add("resizing");
+    });
+    handle.addEventListener("pointermove", (e) => {
+      if (!handle.hasPointerCapture(e.pointerId)) return;
+      state.playerWidth = clampPlayerWidth(window.innerWidth - e.clientX);
+      applyPlayerWidth();
+    });
+    const stop = (e) => {
+      if (!handle.hasPointerCapture(e.pointerId)) return;
+      handle.releasePointerCapture(e.pointerId);
+      document.body.classList.remove("resizing");
+      savePrefs();
+    };
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+    handle.addEventListener("dblclick", () => {
+      state.playerWidth = null;
+      applyPlayerWidth();
+      savePrefs();
+    });
+    handle.addEventListener("keydown", (e) => {
+      const step = e.shiftKey ? 80 : 20;
+      const current = els.player.getBoundingClientRect().width;
+      if (e.key === "ArrowLeft") state.playerWidth = clampPlayerWidth(current + step);
+      else if (e.key === "ArrowRight") state.playerWidth = clampPlayerWidth(current - step);
+      else return;
+      e.preventDefault();
+      applyPlayerWidth();
+      savePrefs();
+    });
+    window.addEventListener("resize", applyPlayerWidth);
+  }
+
   function closePlayer() {
     if (state.playingId === null) return;
     state.playingId = null;
@@ -548,6 +607,8 @@
     els.tz.value = state.tz;
     els.hideEnded.checked = state.hideEnded;
     els.expPlayer.checked = state.expPlayer;
+    applyPlayerWidth();
+    bindPlayerResizer();
 
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
