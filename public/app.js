@@ -4,7 +4,7 @@
 
 (() => {
   const DATA_URL = "data.json";
-  const REFRESH_MS = 5 * 60 * 1000;   // re-fetch data.json
+  const REFRESH_MS = 60 * 1000;       // re-fetch data.json (unchanged data is skipped)
   const LOAD_TIMEOUT_MS = 20 * 1000;  // give up on a hung data.json request
   const TICK_MS = 60 * 1000;          // re-render relative labels
   const STALE_MS = 60 * 60 * 1000;    // generated_at older than this → warning
@@ -197,6 +197,7 @@
 
   let loading = false;
   let lastLoad = 0;
+  let lastGeneratedAt = null;
 
   async function load() {
     if (loading) return;
@@ -205,14 +206,23 @@
     // sleep/network change) would leave `loading` set and stop all refreshes.
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), LOAD_TIMEOUT_MS);
+    let changed = true;
     try {
       const res = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: "no-store", signal: ctrl.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      state.data = sanitize(await res.json());
+      const raw = await res.json();
+      lastLoad = Date.now();
+      // Polled every minute but regenerated far less often: same snapshot,
+      // nothing to rebuild (the per-minute tick keeps relative times fresh).
+      if (state.data && !state.loadError && raw?.generated_at === lastGeneratedAt) {
+        changed = false;
+        return;
+      }
+      state.data = sanitize(raw);
+      lastGeneratedAt = raw.generated_at;
       pruneEntries();
       pruneOverrides();
       state.loadError = null;
-      lastLoad = Date.now();
       renderGroups();
     } catch (err) {
       state.loadError = err.name === "AbortError" ? new Error("逾時") : err;
@@ -220,7 +230,7 @@
     } finally {
       clearTimeout(timer);
       loading = false;
-      render();
+      if (changed) render();
     }
   }
 
