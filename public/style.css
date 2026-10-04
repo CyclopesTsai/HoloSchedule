@@ -531,6 +531,9 @@ body.resizing iframe { pointer-events: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.player-status { font-size: .72rem; color: var(--gold-light); }
+.player-status[hidden] { display: none; }
+
 .player-btn {
   flex: 0 0 auto;
   font: inherit;

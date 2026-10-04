@@ -40,6 +40,7 @@
     playerVideo: $("player-video"),
     playerChat: $("player-chat"),
     playerResizer: $("player-resizer"),
+    playerStatus: $("player-status"),
     gear: $("chip-settings-btn"),
     chipSettings: $("chip-settings"),
     chipSettingsList: $("chip-settings-list"),
@@ -197,6 +198,7 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       state.data = sanitize(await res.json());
       pruneEntries();
+      pruneOverrides();
       state.loadError = null;
       lastLoad = Date.now();
       renderGroups();
@@ -349,6 +351,8 @@
   // Judging "ended" against the snapshot rather than the clock means stale
   // data (e.g. a delayed update) never turns a running stream into "ended".
   function streamState(it, now) {
+    const ov = overrideFor(it);
+    if (ov && it.start <= now) return ov.live ? "live" : "ended";
     if (it.isLive) return "live";
     if (it.start > now) return "upcoming";
     const asOf = state.data?.generatedAt?.getTime() ?? now;
@@ -382,7 +386,7 @@
       time.prepend(day);
     }
 
-    const status = it.isLive ? "直播中，" : isSoon ? "即將開始，" : "";
+    const status = st === "live" ? "直播中，" : isSoon ? "即將開始，" : "";
     const titlePart = it.title ? `：${it.title}` : "";
     node.querySelector(".entry-link").setAttribute(
       "aria-label", `${status}${timeText} ${it.member}（${it.group}）${titlePart}，在 YouTube 開啟`);
@@ -531,26 +535,35 @@
     els.playerTitle.title = it.title || "";
     els.playerYt.href = it.url;
 
-    // youtube.com rather than youtube-nocookie.com: same site as the chat
-    // (youtube.com), so one storage-access grant / login covers both.
-    els.playerVideo.replaceChildren(makeFrame(
-      `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`,
-      `${it.member} 的直播`,
-      "autoplay; encrypted-media; picture-in-picture; fullscreen",
-    ));
+    stopPlayer();
+    const token = playerToken;
+    setPlayerStatus("確認 YouTube 狀態中…");
+    const holder = document.createElement("div");
+    els.playerVideo.replaceChildren(holder);
+    loadYouTubeApi().then((YT) => {
+      if (token !== playerToken) return;
+      // youtube.com (not youtube-nocookie.com): same site as the chat, so one
+      // YouTube login covers both.
+      ytPlayer = new YT.Player(holder, {
+        videoId: id,
+        playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
+        events: { onReady: () => watchStatus(it, token) },
+      });
+    }).catch(() => {
+      if (token !== playerToken) return;
+      // No IFrame API: plain embed, no status check.
+      els.playerVideo.replaceChildren(makeFrame(
+        `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`,
+        `${it.member} 的直播`,
+        "autoplay; encrypted-media; picture-in-picture; fullscreen",
+      ));
+      setPlayerStatus("");
+    });
 
-    // YouTube only frames live chat for the domain named in embed_domain, and
-    // there is no embeddable chat once a stream has ended.
-    const host = location.hostname;
     if (streamState(it, Date.now()) === "ended") {
       els.playerChat.replaceChildren(playerNote("直播已結束，無法嵌入聊天室。"));
-    } else if (!host) {
-      els.playerChat.replaceChildren(playerNote("此環境無法嵌入聊天室。"));
     } else {
-      els.playerChat.replaceChildren(makeFrame(
-        `https://www.youtube.com/live_chat?v=${id}&embed_domain=${encodeURIComponent(host)}`,
-        `${it.member} 的聊天室`,
-      ));
+      loadChat(it);
     }
 
     els.player.hidden = false;
@@ -558,6 +571,145 @@
     render();
     // The list got narrower; keep the clicked row in view.
     els.days.querySelector(`.entry[data-id="${id}"]`)?.scrollIntoView({ block: "nearest" });
+  }
+
+  // YouTube only frames live chat for the domain named in embed_domain.
+  function loadChat(it) {
+    const host = location.hostname;
+    if (!host) {
+      els.playerChat.replaceChildren(playerNote("此環境無法嵌入聊天室。"));
+      return;
+    }
+    els.playerChat.replaceChildren(makeFrame(
+      `https://www.youtube.com/live_chat?v=${it.id}&embed_domain=${encodeURIComponent(host)}`,
+      `${it.member} 的聊天室`,
+    ));
+  }
+
+  // ------------------------------------- live status check in the player
+  // When a stream is opened, the IFrame Player API reports what YouTube knows
+  // about it. The fields used are undocumented, so this is best effort: a
+  // verdict is only taken when two polls a second apart agree, and anything
+  // unclear leaves the data alone. Observed (2026-10):
+  //   live      isLive && isManifestless, duration 0
+  //   upcoming  isLive && !isManifestless, duration 0
+  //   ended     !isLive, duration > 0 (the archive's length)
+  // Verdicts override the data in this browser only, until data.json is
+  // regenerated after the check (or OVERRIDE_TTL_MS passes).
+
+  const OVERRIDE_KEY = "holoschedule:overrides";
+  const OVERRIDE_TTL_MS = 6 * 60 * 60 * 1000;
+  const STATUS_POLL_MS = 1000;
+  const STATUS_MAX_POLLS = 20;
+  let overrides = new Map(); // id → { live: boolean, at: ms }
+  let ytApi = null;
+  let ytPlayer = null;
+  let statusTimer = null;
+  let playerToken = 0; // bumps on every open/close so stale callbacks bail out
+
+  function loadOverrides() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(OVERRIDE_KEY) || "{}");
+      for (const [id, v] of Object.entries(raw)) {
+        if (v && typeof v.live === "boolean" && Number.isFinite(v.at)) overrides.set(id, v);
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  function saveOverrides() {
+    try {
+      localStorage.setItem(OVERRIDE_KEY, JSON.stringify(Object.fromEntries(overrides)));
+    } catch (_) { /* ignore */ }
+  }
+
+  function pruneOverrides() {
+    const dataAt = state.data?.generatedAt?.getTime() ?? 0;
+    const cutoff = Date.now() - OVERRIDE_TTL_MS;
+    let changed = false;
+    for (const [id, v] of overrides) {
+      if (v.at <= dataAt || v.at < cutoff) { overrides.delete(id); changed = true; }
+    }
+    if (changed) saveOverrides();
+  }
+
+  function overrideFor(it) {
+    const v = overrides.get(it.id);
+    if (!v) return null;
+    if (v.at <= (state.data?.generatedAt?.getTime() ?? 0) || v.at < Date.now() - OVERRIDE_TTL_MS) return null;
+    return v;
+  }
+
+  function loadYouTubeApi() {
+    if (window.YT?.Player) return Promise.resolve(window.YT);
+    if (!ytApi) {
+      ytApi = new Promise((resolve, reject) => {
+        const prev = window.onYouTubeIframeAPIReady;
+        window.onYouTubeIframeAPIReady = () => { prev?.(); resolve(window.YT); };
+        const s = document.createElement("script");
+        s.src = "https://www.youtube.com/iframe_api";
+        s.onerror = reject;
+        document.head.append(s);
+        setTimeout(() => reject(new Error("YouTube IFrame API timeout")), 10000);
+      }).catch((e) => { ytApi = null; throw e; });
+    }
+    return ytApi;
+  }
+
+  function setPlayerStatus(text) {
+    els.playerStatus.textContent = text;
+    els.playerStatus.hidden = !text;
+  }
+
+  function classify(id) {
+    try {
+      const vd = ytPlayer?.getVideoData?.();
+      if (!vd || vd.video_id !== id) return null;
+      const duration = ytPlayer.getDuration?.() || 0;
+      if (vd.isLive && vd.isManifestless) return "live";
+      if (vd.isLive) return "upcoming";
+      if (duration > 0) return "ended";
+    } catch (_) { /* player not ready */ }
+    return null;
+  }
+
+  function watchStatus(it, token) {
+    let last = null;
+    let polls = 0;
+    clearInterval(statusTimer);
+    statusTimer = setInterval(() => {
+      if (token !== playerToken) { clearInterval(statusTimer); return; }
+      const verdict = classify(it.id);
+      if (verdict && verdict === last) {
+        clearInterval(statusTimer);
+        applyVerdict(it, verdict);
+        return;
+      }
+      last = verdict;
+      if (++polls >= STATUS_MAX_POLLS) {
+        clearInterval(statusTimer);
+        setPlayerStatus("無法確認 YouTube 狀態");
+      }
+    }, STATUS_POLL_MS);
+  }
+
+  function applyVerdict(it, verdict) {
+    setPlayerStatus({ live: "YouTube 狀態：直播中", ended: "YouTube 狀態：已結束", upcoming: "YouTube 狀態：尚未開始" }[verdict]);
+    if (verdict === "upcoming" || it.start > Date.now()) return;
+    const live = verdict === "live";
+    const before = streamState(it, Date.now());
+    overrides.set(it.id, { live, at: Date.now() });
+    saveOverrides();
+    if (live && before === "ended") loadChat(it); // chat was skipped as "ended"
+    if (streamState(it, Date.now()) !== before) render();
+  }
+
+  // Tears down the current video/status check (not the panel itself).
+  function stopPlayer() {
+    playerToken++;
+    clearInterval(statusTimer);
+    try { ytPlayer?.destroy(); } catch (_) { /* ignore */ }
+    ytPlayer = null;
+    setPlayerStatus("");
   }
 
   // Player width: dragged/keyed by the user, kept within what leaves the list usable.
@@ -618,6 +770,7 @@
   function closePlayer() {
     if (state.playingId === null) return;
     state.playingId = null;
+    stopPlayer();
     els.playerVideo.replaceChildren();
     els.playerChat.replaceChildren();
     els.player.hidden = true;
@@ -700,6 +853,7 @@
   }
 
   loadPrefs();
+  loadOverrides();
   bind();
   load();
 })();
