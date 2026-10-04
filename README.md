@@ -2,7 +2,7 @@
 
 把 [ホロジュール（schedule.hololive.tv）](https://schedule.hololive.tv/) 的直播排程整理成一個輕量的靜態網頁，透過 GitHub Actions 每 15 分鐘抓取一次並部署到 GitHub Pages。
 
-> **非官方、個人使用、不得商用。** 本專案與 COVER 株式会社、hololive production 無關；資料可能有誤，請以原站為準。
+> **非官方。** 本專案與 COVER 株式会社、hololive production 無關；資料可能有誤，請以原站為準。程式碼以 [AGPL-3.0](LICENSE) 授權；節目資料的版權屬原站與各權利人，不在授權範圍內，請勿商用。
 
 網站：<https://cyclopestsai.github.io/HoloSchedule/>
 
@@ -92,7 +92,7 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
 - 依日期分組（以所選時區的日期計算），標示「今天／明天／後天」；**不顯示過去的日期**，但今天已結束的節目仍會保留（淡化顯示）。
 - 今天的清單順序為：已開始／已結束 → 所有直播中的節目（連成一塊，依開始時間排序）→「現在」分隔線 → 即將開始。直播中以紅色底色與 LIVE 標記顯示；前一天開始、仍在直播的節目也併入今天的直播區塊，並在時間上方標出日期。1 小時內開始的節目標示「N 分鐘後」。
 - 清單中有一條「現在 HH:MM」分隔線；開啟頁面（以及切換時區、團體、隱藏已結束）時會自動捲動到目前時間，分隔線位於畫面約 40% 處，上方保留剛開始的節目。自動重新整理不會移動捲動位置。
-- 團體篩選固定在畫面頂端（單列，可橫向滑動）。右側齒輪可勾選要顯示哪些團體的篩選按鈕；預設不顯示 HOLOSTARS 與 HOLOSTARS English 的按鈕，但它們的節目一律會出現在「全部」中。
+- 團體篩選固定在畫面頂端（單列，可橫向滑動）。右側齒輪可勾選要顯示的團體；未勾選的團體完全不顯示（「全部」也不含，也沒有篩選按鈕）。預設不顯示 HOLOSTARS 與 HOLOSTARS English。
 - 時區切換（台北〔預設〕、東京、瀏覽器本地）、外觀（跟隨系統〔預設〕、淺色、深色）與「隱藏已結束」（開始超過 30 分鐘且不在直播中）放在標題區。以上偏好都會記在 localStorage。
 - 顯示最後更新時間；`generated_at` 超過 1 小時會顯示「資料可能已過期」。
 - 頁面開著時每 5 分鐘重新讀取 `data.json`（附 `?t=` cache-busting），每分鐘更新相對時間標示。
@@ -155,6 +155,15 @@ GitHub 官方文件：「In a public repository, scheduled workflows are automat
 
 ## 合理使用提醒
 
-- 資料版權屬於原站與各權利人。本專案只做個人瀏覽用途的整理，**不得商用**，也請勿大量轉載。
+- 資料版權屬於原站與各權利人。本專案只做個人瀏覽用途的整理；**請勿將資料用於商業用途**，也請勿大量轉載。（這是對資料與原站的使用提醒，不是程式碼授權的附加條件；AGPL 本身不限制商用。）
 - 請維持低頻率請求，不要調高抓取頻率或平行抓取。
 - 網頁頁尾已標示資料來源並連回 schedule.hololive.tv，並註明非官方。若 fork 使用，請保留這些標示並把 User-Agent 中的 repo 網址改成你自己的。
+
+## 授權
+
+- 本專案的程式碼（`scripts/`、`public/` 的 HTML／CSS／JS、`tests/` 中的測試程式、workflow）以 **GNU Affero General Public License v3.0 or later**（`AGPL-3.0-or-later`）授權，全文見 [LICENSE](LICENSE)。
+- AGPL 第 13 條：若你修改後架設成網站讓他人使用，必須讓使用者取得你修改後的原始碼。本站頁尾已附原始碼連結；fork 時請改成你自己的 repo 網址。
+- **不在授權範圍內**：
+  - 節目資料（`data.json` 內容、成員名稱、縮圖等）屬原站與各權利人。
+  - `tests/fixtures/` 是從 schedule.hololive.tv 存下的原始 HTML，版權屬原站，只供解析測試使用（詳見該目錄的 README）。
+- 相依套件：requests（Apache-2.0）、beautifulsoup4（MIT）、pytest（MIT），皆與 AGPL-3.0 相容；它們不隨本專案散布，由 pip 另行安裝。

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 CyclopesTsai
 """Scrape ホロジュール (https://schedule.hololive.tv/) into public/data.json.
 
 The site has one page per group (/lives/hololive, /lives/holostars, ...); together
