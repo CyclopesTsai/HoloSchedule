@@ -53,6 +53,11 @@ jobs:
           print(f"generated_at `{d['generated_at']}` · {len(d['items'])} items · {live} live")
           PY
 
+      # Pages caches everything for 10 minutes and allows no custom headers;
+      # versioned CSS/JS URLs make browsers fetch new code right after a deploy.
+      - name: Version CSS/JS URLs
+        run: python scripts/stamp_assets.py public
+
       - uses: actions/upload-pages-artifact@v5
         with:
           path: public

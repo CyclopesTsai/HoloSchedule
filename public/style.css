@@ -144,6 +144,7 @@ h1 { font-size: 1.35rem; margin: 0; letter-spacing: .02em; }
   top: 0;
   z-index: 10;
   padding: 8px 0;
+  background: var(--bg); /* fallback for browsers without color-mix() */
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: saturate(1.4) blur(10px);
   -webkit-backdrop-filter: saturate(1.4) blur(10px);
@@ -288,6 +289,7 @@ main { padding-top: 8px; padding-bottom: 24px; min-height: 50vh; }
   font-size: .78rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  background: var(--surface-2);
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   border-top: 1px solid var(--border);
 }

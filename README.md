@@ -20,14 +20,16 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
 ```
 .
 ├── .github/workflows/
-│   ├── update.yml       # 測試 → 抓取 → 部署 Pages（cron / 手動 / push main）
+│   ├── update.yml       # 測試 → 抓取 → 加版本參數 → 部署 Pages（cron / 手動 / push main）
 │   └── keepalive.yml    # 每月一次，避免排程因 60 天無活動被停用
 ├── public/              # 靜態網站（不需 build）
 │   ├── index.html
 │   ├── style.css
 │   ├── app.js
 │   └── data.json        # 由 scrape.py 產生，不進版控
-├── scripts/scrape.py    # requests + BeautifulSoup 抓取與解析
+├── scripts/
+│   ├── scrape.py        # requests + BeautifulSoup 抓取與解析
+│   └── stamp_assets.py  # 部署時替 CSS/JS 網址加上內容雜湊（避免舊快取）
 ├── tests/
 │   ├── fixtures/        # 2026-10-04 存下的原站 HTML 樣本
 │   └── test_scrape.py
@@ -98,6 +100,7 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
 - 頁面開著時每 5 分鐘重新讀取 `data.json`（附 `?t=` cache-busting），每分鐘更新相對時間標示。
 - 縮圖 `loading="lazy"`，容器固定寬度與 16:9 比例避免版面跳動；手機優先 RWD；深色模式可跟隨系統或手動指定（在第一次繪製前套用，不會閃白）。
 - 連結以新分頁開啟（`rel="noopener noreferrer"`）。
+- 快取：GitHub Pages 對所有檔案固定送 `Cache-Control: max-age=600`，且無法自訂 header。部署時 `scripts/stamp_assets.py` 會把 `index.html` 裡的 `style.css`、`app.js` 改成 `?v=<內容雜湊>`，檔案一改網址就變，瀏覽器會立刻抓新版；`index.html` 本身最多仍可能被快取 10 分鐘。
 
 ## 本機執行
 

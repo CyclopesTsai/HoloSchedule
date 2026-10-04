@@ -416,7 +416,8 @@
     const stickyHeight = document.querySelector(".controls").offsetHeight;
     const context = (window.innerHeight - stickyHeight) * 0.4;
     const top = el.getBoundingClientRect().top + window.scrollY - stickyHeight - context;
-    window.scrollTo({ top: Math.max(0, top), behavior: "instant" });
+    // Plain (x, y) form: older Safari throws on behavior: "instant".
+    window.scrollTo(0, Math.max(0, top));
   }
 
   // --------------------------------------------------------------- events
