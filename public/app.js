@@ -30,7 +30,6 @@
     tz: $("tz"),
     groups: $("groups"),
     hideEnded: $("hide-ended"),
-    expPlayer: $("exp-player"),
     player: $("player"),
     playerMember: $("player-member"),
     playerTitle: $("player-title"),
@@ -54,7 +53,6 @@
     tz: "Asia/Taipei",
     group: "all",
     hideEnded: false,
-    expPlayer: false,    // experimental: open streams in the side player
     playingId: null,
     playerWidth: null,   // px chosen by dragging; null = CSS default
     hiddenGroups: new Set(DEFAULT_HIDDEN_GROUPS),
@@ -73,7 +71,6 @@
       if (saved.tz in TZ_LABEL) state.tz = saved.tz;
       if (typeof saved.group === "string") state.group = saved.group;
       state.hideEnded = saved.hideEnded === true;
-      state.expPlayer = saved.expPlayer === true;
       if (Number.isFinite(saved.playerWidth)) state.playerWidth = saved.playerWidth;
       if (Array.isArray(saved.hiddenGroups)) state.hiddenGroups = new Set(saved.hiddenGroups.map(String));
     } catch (_) { /* storage unavailable: use defaults */ }
@@ -85,7 +82,6 @@
         tz: state.tz,
         group: state.group,
         hideEnded: state.hideEnded,
-        expPlayer: state.expPlayer,
         playerWidth: state.playerWidth,
         hiddenGroups: [...state.hiddenGroups],
       }));
@@ -510,7 +506,7 @@
     scrollBelowTopbar(el, (window.innerHeight - stickyHeight) * 0.4);
   }
 
-  // ------------------------------------------------- experimental player
+  // ------------------------------------------------------- side player
 
   const VIDEO_ID_RE = /^[\w-]{11}$/;
 
@@ -819,20 +815,14 @@
   function bind() {
     els.tz.value = state.tz;
     els.hideEnded.checked = state.hideEnded;
-    els.expPlayer.checked = state.expPlayer;
     applyPlayerWidth();
     bindPlayerResizer();
 
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
     els.tz.addEventListener("change", () => { state.tz = els.tz.value; savePrefs(); pendingScroll = true; render(); });
-    els.expPlayer.addEventListener("change", () => {
-      state.expPlayer = els.expPlayer.checked;
-      savePrefs();
-      if (!state.expPlayer) closePlayer();
-    });
     els.days.addEventListener("click", (e) => {
-      if (!state.expPlayer || !state.data) return;
+      if (!state.data) return;
       const link = e.target.closest(".entry-link");
       // Modified clicks keep the browser's own behaviour (new tab/window).
       if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;

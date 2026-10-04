@@ -446,7 +446,7 @@ select {
 
 .empty { text-align: center; color: var(--ink-soft); padding: 40px 0; }
 
-/* ------------------------------------------------- experimental player */
+/* ------------------------------------------------------- side player */
 
 /* Desktop: the page makes room on the right and the player docks there.
    Phones: the player covers the screen (no room for two columns). */

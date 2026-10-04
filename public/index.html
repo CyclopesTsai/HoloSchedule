@@ -47,12 +47,7 @@
         <p class="chip-settings-title">要顯示的團體</p>
         <div id="chip-settings-list"></div>
         <p class="chip-settings-note">未勾選的團體不會出現在清單中（包含「全部」）。</p>
-        <p class="chip-settings-title">試驗性功能</p>
-        <label class="toggle setting">
-          <input type="checkbox" id="exp-player">
-          <span>點擊節目時在右側播放影片與聊天室</span>
-        </label>
-        <p class="chip-settings-note">⌘／Ctrl＋點擊或中鍵仍會在新分頁開啟 YouTube。聊天室需登入 YouTube 才能發言。</p>
+        <p class="chip-settings-note">點擊節目會在右側播放影片與聊天室；⌘／Ctrl＋點擊或中鍵則在新分頁開啟 YouTube。</p>
       </div>
     </div>
   </header>
@@ -70,7 +65,7 @@
     </div>
   </footer>
 
-  <!-- Experimental side player (⚙ → 試驗性功能). Iframes are created on open
+  <!-- Side player. Iframes are created on open
        and removed on close so nothing keeps playing or loading in the background. -->
   <aside class="player" id="player" hidden aria-label="節目播放器">
     <div class="player-resizer" id="player-resizer" role="separator" tabindex="0"
