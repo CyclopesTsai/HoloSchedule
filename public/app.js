@@ -509,8 +509,10 @@
     els.playerTitle.title = it.title || "";
     els.playerYt.href = it.url;
 
+    // youtube.com rather than youtube-nocookie.com: same site as the chat
+    // (youtube.com), so one storage-access grant / login covers both.
     els.playerVideo.replaceChildren(makeFrame(
-      `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`,
+      `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`,
       `${it.member} 的直播`,
       "autoplay; encrypted-media; picture-in-picture; fullscreen",
     ));
