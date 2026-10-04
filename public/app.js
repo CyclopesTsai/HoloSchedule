@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 CyclopesTsai
 "use strict";
 
 (() => {
@@ -10,9 +12,9 @@
   const STORAGE_KEY = "holoschedule:prefs";
 
   const GROUP_ORDER = ["hololive", "HOLOSTARS", "HOLOSTARS English", "mekPark", "COVER"];
-  // Groups whose filter chip is off until the user turns it on (⚙). Their
-  // streams still show under 全部 either way.
-  const DEFAULT_HIDDEN_CHIPS = ["HOLOSTARS", "HOLOSTARS English"];
+  // Groups hidden until the user turns them on (⚙). Hidden groups are left out
+  // everywhere, including 全部, and get no filter chip.
+  const DEFAULT_HIDDEN_GROUPS = ["HOLOSTARS", "HOLOSTARS English"];
   const GROUP_COLOR = {
     "hololive": "var(--g-hololive)",
     "HOLOSTARS": "var(--g-holostars)",
@@ -44,7 +46,7 @@
     tz: "Asia/Taipei",
     group: "all",
     hideEnded: false,
-    hiddenChips: new Set(DEFAULT_HIDDEN_CHIPS),
+    hiddenGroups: new Set(DEFAULT_HIDDEN_GROUPS),
     theme: "system",     // "system" | "light" | "dark"
   };
 
@@ -61,7 +63,7 @@
       if (typeof saved.group === "string") state.group = saved.group;
       state.hideEnded = saved.hideEnded === true;
       if (["system", "light", "dark"].includes(saved.theme)) state.theme = saved.theme;
-      if (Array.isArray(saved.hiddenChips)) state.hiddenChips = new Set(saved.hiddenChips.map(String));
+      if (Array.isArray(saved.hiddenGroups)) state.hiddenGroups = new Set(saved.hiddenGroups.map(String));
     } catch (_) { /* storage unavailable: use defaults */ }
   }
 
@@ -72,7 +74,7 @@
         group: state.group,
         hideEnded: state.hideEnded,
         theme: state.theme,
-        hiddenChips: [...state.hiddenChips],
+        hiddenGroups: [...state.hiddenGroups],
       }));
     } catch (_) { /* ignore */ }
   }
@@ -205,7 +207,7 @@
   // Rebuilt on load and when ⚙ settings change; counts are filled in by
   // updateGroupCounts on every render.
   function renderGroups() {
-    const groups = allGroups().filter((g) => !state.hiddenChips.has(g));
+    const groups = allGroups().filter((g) => !state.hiddenGroups.has(g));
     if (state.group !== "all" && !groups.includes(state.group)) {
       state.group = "all";
       savePrefs();
@@ -241,7 +243,7 @@
       const box = document.createElement("input");
       box.type = "checkbox";
       box.value = g;
-      box.checked = !state.hiddenChips.has(g);
+      box.checked = !state.hiddenGroups.has(g);
       const name = document.createElement("span");
       name.textContent = g;
       label.append(box, name);
@@ -326,10 +328,11 @@
     renderStatus(now);
     if (!state.data) return;
 
-    // Past days are hidden; today's ended streams stay. Live streams always show,
-    // even if they started yesterday.
+    // Groups turned off in ⚙ are dropped entirely. Past days are hidden; today's
+    // ended streams stay. Live streams always show, even if they started yesterday.
     const todayKey = dayKey(new Date(now));
-    const current = state.data.items.filter((it) => it.isLive || dayKey(it.start) >= todayKey);
+    const current = state.data.items.filter((it) =>
+      !state.hiddenGroups.has(it.group) && (it.isLive || dayKey(it.start) >= todayKey));
     updateGroupCounts(current);
 
     const visible = current.filter((it) =>
@@ -442,8 +445,8 @@
     els.gear.addEventListener("click", () => setChipSettingsOpen(els.chipSettings.hidden));
     els.chipSettingsList.addEventListener("change", (e) => {
       const box = e.target;
-      if (box.checked) state.hiddenChips.delete(box.value);
-      else state.hiddenChips.add(box.value);
+      if (box.checked) state.hiddenGroups.delete(box.value);
+      else state.hiddenGroups.add(box.value);
       savePrefs();
       if (state.data) {
         renderGroups();
