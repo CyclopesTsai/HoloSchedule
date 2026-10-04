@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>hololive 直播節目表（非官方）</title>
+  <meta name="description" content="非官方 hololive 直播節目表，資料取自ホロジュール（schedule.hololive.tv），每 15 分鐘更新。">
+  <meta name="robots" content="noindex">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14161c" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2329a8e0'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <div class="title-row">
+        <h1>hololive 直播節目表</h1>
+        <span class="unofficial">非官方</span>
+      </div>
+      <p class="status" id="status" aria-live="polite">讀取中…</p>
+      <p class="stale" id="stale" hidden>⚠️ 資料可能已過期（超過 1 小時未更新），請以<a href="https://schedule.hololive.tv/" target="_blank" rel="noopener noreferrer">原站</a>為準。</p>
+    </div>
+  </header>
+
+  <nav class="controls" aria-label="篩選">
+    <div class="wrap">
+      <div class="control-row">
+        <label class="search">
+          <span class="visually-hidden">搜尋成員</span>
+          <input id="search" type="search" placeholder="搜尋成員名稱…" autocomplete="off" enterkeyhint="search">
+        </label>
+        <label class="tz">
+          <span class="visually-hidden">時區</span>
+          <select id="tz">
+            <option value="Asia/Taipei">台北時間</option>
+            <option value="Asia/Tokyo">東京時間</option>
+            <option value="local">瀏覽器本地</option>
+          </select>
+        </label>
+      </div>
+      <div class="control-row">
+        <div class="chips" id="groups" role="group" aria-label="團體"></div>
+        <label class="toggle">
+          <input type="checkbox" id="hide-ended">
+          <span>隱藏已結束</span>
+        </label>
+      </div>
+    </div>
+  </nav>
+
+  <main class="wrap" id="main">
+    <section id="live-section" class="live-section" hidden aria-labelledby="live-heading">
+      <h2 id="live-heading" class="day-heading live-heading"><span class="dot" aria-hidden="true"></span>直播中</h2>
+      <ul class="grid" id="live-list"></ul>
+    </section>
+    <div id="days"></div>
+    <p class="empty" id="empty" hidden>沒有符合條件的節目。</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>資料來源：<a href="https://schedule.hololive.tv/" target="_blank" rel="noopener noreferrer">ホロジュール（schedule.hololive.tv）</a></p>
+      <p>本站為個人製作的<strong>非官方</strong>頁面，與 COVER 株式会社及 hololive production 無關。資料可能有誤，請以原站為準。僅供個人使用，不得商用。</p>
+      <p><a href="https://github.com/CyclopesTsai/HoloSchedule" target="_blank" rel="noopener noreferrer">原始碼（GitHub）</a></p>
+    </div>
+  </footer>
+
+  <template id="card-tpl">
+    <li class="card">
+      <a class="card-link" target="_blank" rel="noopener noreferrer">
+        <div class="thumb">
+          <img alt="" loading="lazy" decoding="async" width="320" height="180">
+          <span class="badge badge-live">LIVE</span>
+          <span class="badge badge-soon"></span>
+        </div>
+        <div class="meta">
+          <time class="time"></time>
+          <span class="member"></span>
+          <span class="group"></span>
+        </div>
+      </a>
+    </li>
+  </template>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

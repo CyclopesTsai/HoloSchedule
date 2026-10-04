@@ -1,0 +1,29 @@
+name: Keepalive
+
+# GitHub disables scheduled workflows in public repos after 60 days without
+# repository activity. Once a month, re-enable update.yml via the official
+# "Enable a workflow" REST endpoint. This makes no commits and changes nothing
+# when the workflow is already enabled. GitHub does not document whether this
+# call counts as "activity", so treat it as best effort (see README).
+
+on:
+  schedule:
+    - cron: "17 3 1 * *"   # 03:17 UTC on the 1st of every month
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Re-enable scheduled workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wf in update.yml keepalive.yml; do
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${wf}/enable"
+            echo "enabled ${wf}: $(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${wf}" --jq .state)"
+          done
