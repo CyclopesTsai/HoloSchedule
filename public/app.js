@@ -10,8 +10,9 @@
   const STORAGE_KEY = "holoschedule:prefs";
 
   const GROUP_ORDER = ["hololive", "HOLOSTARS", "HOLOSTARS English", "mekPark", "COVER"];
-  // Groups without their own filter chip (their streams still show under 全部).
-  const NO_CHIP_GROUPS = new Set(["HOLOSTARS", "HOLOSTARS English"]);
+  // Groups whose filter chip is off until the user turns it on (⚙). Their
+  // streams still show under 全部 either way.
+  const DEFAULT_HIDDEN_CHIPS = ["HOLOSTARS", "HOLOSTARS English"];
   const GROUP_COLOR = {
     "hololive": "var(--g-hololive)",
     "HOLOSTARS": "var(--g-holostars)",
@@ -28,6 +29,9 @@
     tz: $("tz"),
     groups: $("groups"),
     hideEnded: $("hide-ended"),
+    gear: $("chip-settings-btn"),
+    chipSettings: $("chip-settings"),
+    chipSettingsList: $("chip-settings-list"),
     theme: $("theme"),
     days: $("days"),
     empty: $("empty"),
@@ -40,6 +44,7 @@
     tz: "Asia/Taipei",
     group: "all",
     hideEnded: false,
+    hiddenChips: new Set(DEFAULT_HIDDEN_CHIPS),
     theme: "system",     // "system" | "light" | "dark"
   };
 
@@ -56,12 +61,19 @@
       if (typeof saved.group === "string") state.group = saved.group;
       state.hideEnded = saved.hideEnded === true;
       if (["system", "light", "dark"].includes(saved.theme)) state.theme = saved.theme;
+      if (Array.isArray(saved.hiddenChips)) state.hiddenChips = new Set(saved.hiddenChips.map(String));
     } catch (_) { /* storage unavailable: use defaults */ }
   }
 
   function savePrefs() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tz: state.tz, group: state.group, hideEnded: state.hideEnded, theme: state.theme }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        tz: state.tz,
+        group: state.group,
+        hideEnded: state.hideEnded,
+        theme: state.theme,
+        hiddenChips: [...state.hiddenChips],
+      }));
     } catch (_) { /* ignore */ }
   }
 
@@ -180,15 +192,24 @@
 
   // --------------------------------------------------------------- render
 
-  // Built once per load; counts are filled in by updateGroupCounts on every render.
+  // Known groups plus any new ones that show up in the data.
+  function allGroups() {
+    const names = new Set(GROUP_ORDER);
+    for (const it of state.data?.items || []) names.add(it.group);
+    return [...names].sort((a, b) => {
+      const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+  }
+
+  // Rebuilt on load and when ⚙ settings change; counts are filled in by
+  // updateGroupCounts on every render.
   function renderGroups() {
-    const groups = [...new Set(state.data.items.map((it) => it.group))]
-      .filter((g) => !NO_CHIP_GROUPS.has(g))
-      .sort((a, b) => {
-        const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
-        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
-      });
-    if (state.group !== "all" && !groups.includes(state.group)) state.group = "all";
+    const groups = allGroups().filter((g) => !state.hiddenChips.has(g));
+    if (state.group !== "all" && !groups.includes(state.group)) {
+      state.group = "all";
+      savePrefs();
+    }
 
     const frag = document.createDocumentFragment();
     for (const [value, label] of [["all", "全部"], ...groups.map((g) => [g, g])]) {
@@ -209,6 +230,31 @@
     for (const b of els.groups.querySelectorAll(".chip")) {
       b.textContent = `${b.dataset.label} ${counts.get(b.dataset.group) || 0}`;
     }
+  }
+
+  function renderChipSettings() {
+    const frag = document.createDocumentFragment();
+    for (const g of allGroups()) {
+      const label = document.createElement("label");
+      label.className = "chip-option";
+      label.style.setProperty("--group-color", GROUP_COLOR[g] || "var(--border)");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = g;
+      box.checked = !state.hiddenChips.has(g);
+      const name = document.createElement("span");
+      name.textContent = g;
+      label.append(box, name);
+      frag.append(label);
+    }
+    els.chipSettingsList.replaceChildren(frag);
+  }
+
+  function setChipSettingsOpen(open) {
+    if (open) renderChipSettings();
+    els.chipSettings.hidden = !open;
+    els.gear.setAttribute("aria-expanded", String(open));
+    if (open) els.chipSettingsList.querySelector("input")?.focus();
   }
 
   function renderStatus(now) {
@@ -391,6 +437,29 @@
       savePrefs();
       pendingScroll = true;
       render();
+    });
+
+    els.gear.addEventListener("click", () => setChipSettingsOpen(els.chipSettings.hidden));
+    els.chipSettingsList.addEventListener("change", (e) => {
+      const box = e.target;
+      if (box.checked) state.hiddenChips.delete(box.value);
+      else state.hiddenChips.add(box.value);
+      savePrefs();
+      if (state.data) {
+        renderGroups();
+        render();
+      }
+    });
+    document.addEventListener("click", (e) => {
+      if (!els.chipSettings.hidden && !els.chipSettings.contains(e.target) && !els.gear.contains(e.target)) {
+        setChipSettingsOpen(false);
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !els.chipSettings.hidden) {
+        setChipSettingsOpen(false);
+        els.gear.focus();
+      }
     });
 
     setInterval(load, REFRESH_MS);
