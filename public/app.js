@@ -673,6 +673,9 @@
   }
 
   function watchStatus(it, token) {
+    // A late onReady from a player that was already replaced must not touch
+    // the current player's timer.
+    if (token !== playerToken) return;
     let last = null;
     let polls = 0;
     clearInterval(statusTimer);
