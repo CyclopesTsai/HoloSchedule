@@ -26,6 +26,7 @@
     tz: $("tz"),
     groups: $("groups"),
     hideEnded: $("hide-ended"),
+    theme: $("theme"),
     days: $("days"),
     empty: $("empty"),
     tpl: $("entry-tpl"),
@@ -37,6 +38,7 @@
     tz: "Asia/Taipei",
     group: "all",
     hideEnded: false,
+    theme: "system",     // "system" | "light" | "dark"
   };
 
   // Scroll to "now" after the next render that has data (initial load, or the
@@ -51,13 +53,25 @@
       if (saved.tz in TZ_LABEL) state.tz = saved.tz;
       if (typeof saved.group === "string") state.group = saved.group;
       state.hideEnded = saved.hideEnded === true;
+      if (["system", "light", "dark"].includes(saved.theme)) state.theme = saved.theme;
     } catch (_) { /* storage unavailable: use defaults */ }
   }
 
   function savePrefs() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tz: state.tz, group: state.group, hideEnded: state.hideEnded }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tz: state.tz, group: state.group, hideEnded: state.hideEnded, theme: state.theme }));
     } catch (_) { /* ignore */ }
+  }
+
+  function applyTheme() {
+    const root = document.documentElement;
+    if (state.theme === "system") delete root.dataset.theme;
+    else root.dataset.theme = state.theme;
+    // Browser UI colour: keep the per-scheme defaults unless a theme is forced.
+    for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+      meta.dataset.default ??= meta.content;
+      meta.content = { light: "#f6f7fb", dark: "#14161c" }[state.theme] || meta.dataset.default;
+    }
   }
 
   // ----------------------------------------------------------------- time
@@ -357,10 +371,13 @@
   function bind() {
     els.tz.value = state.tz;
     els.hideEnded.checked = state.hideEnded;
+    els.theme.value = state.theme;
+    applyTheme();
 
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
     els.tz.addEventListener("change", () => { state.tz = els.tz.value; savePrefs(); pendingScroll = true; render(); });
+    els.theme.addEventListener("change", () => { state.theme = els.theme.value; savePrefs(); applyTheme(); });
     els.hideEnded.addEventListener("change", () => { state.hideEnded = els.hideEnded.checked; savePrefs(); pendingScroll = true; render(); });
     els.groups.addEventListener("click", (e) => {
       const btn = e.target.closest(".chip");
