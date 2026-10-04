@@ -34,7 +34,6 @@
     gear: $("chip-settings-btn"),
     chipSettings: $("chip-settings"),
     chipSettingsList: $("chip-settings-list"),
-    theme: $("theme"),
     days: $("days"),
     empty: $("empty"),
     tpl: $("entry-tpl"),
@@ -47,7 +46,6 @@
     group: "all",
     hideEnded: false,
     hiddenGroups: new Set(DEFAULT_HIDDEN_GROUPS),
-    theme: "system",     // "system" | "light" | "dark"
   };
 
   // Scroll to "now" after the next render that has data (initial load, or the
@@ -62,7 +60,6 @@
       if (saved.tz in TZ_LABEL) state.tz = saved.tz;
       if (typeof saved.group === "string") state.group = saved.group;
       state.hideEnded = saved.hideEnded === true;
-      if (["system", "light", "dark"].includes(saved.theme)) state.theme = saved.theme;
       if (Array.isArray(saved.hiddenGroups)) state.hiddenGroups = new Set(saved.hiddenGroups.map(String));
     } catch (_) { /* storage unavailable: use defaults */ }
   }
@@ -73,49 +70,51 @@
         tz: state.tz,
         group: state.group,
         hideEnded: state.hideEnded,
-        theme: state.theme,
         hiddenGroups: [...state.hiddenGroups],
       }));
     } catch (_) { /* ignore */ }
   }
 
-  function applyTheme() {
-    const root = document.documentElement;
-    if (state.theme === "system") delete root.dataset.theme;
-    else root.dataset.theme = state.theme;
-    // Browser UI colour: keep the per-scheme defaults unless a theme is forced.
-    for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
-      meta.dataset.default ??= meta.content;
-      meta.content = { light: "#f6f7fb", dark: "#14161c" }[state.theme] || meta.dataset.default;
-    }
-  }
-
   // ----------------------------------------------------------------- time
 
-  function tzOption() {
-    return state.tz === "local" ? {} : { timeZone: state.tz };
+  // Building an Intl.DateTimeFormat is ~35× slower than using one, and a render
+  // formats every row several times, so keep one per (timezone, options).
+  const formatters = new Map();
+
+  function formatter(opts) {
+    const key = state.tz + JSON.stringify(opts);
+    let f = formatters.get(key);
+    if (!f) {
+      f = new Intl.DateTimeFormat("en-CA", state.tz === "local" ? opts : { ...opts, timeZone: state.tz });
+      formatters.set(key, f);
+    }
+    return f;
   }
 
   function partsOf(date, opts) {
     const out = {};
-    for (const p of new Intl.DateTimeFormat("en-CA", { ...tzOption(), ...opts }).formatToParts(date)) {
-      out[p.type] = p.value;
-    }
+    for (const p of formatter(opts).formatToParts(date)) out[p.type] = p.value;
     return out;
   }
 
+  const DAY_OPTS = { year: "numeric", month: "2-digit", day: "2-digit" };
+  const TIME_OPTS = { hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+  const DATETIME_OPTS = { ...DAY_OPTS, ...TIME_OPTS };
+  const MONTH_DAY_OPTS = { month: "numeric", day: "numeric" };
+  const weekdayFormat = new Intl.DateTimeFormat("zh-TW", { weekday: "short", timeZone: "UTC" });
+
   function dayKey(date) {
-    const p = partsOf(date, { year: "numeric", month: "2-digit", day: "2-digit" });
+    const p = partsOf(date, DAY_OPTS);
     return `${p.year}-${p.month}-${p.day}`;
   }
 
   function formatTime(date) {
-    const p = partsOf(date, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    const p = partsOf(date, TIME_OPTS);
     return `${p.hour}:${p.minute}`;
   }
 
   function formatDateTime(date) {
-    const p = partsOf(date, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    const p = partsOf(date, DATETIME_OPTS);
     return `${p.year}/${p.month}/${p.day} ${p.hour}:${p.minute}`;
   }
 
@@ -127,8 +126,7 @@
 
   function dayHeading(key, todayKey) {
     const [, m, d] = key.split("-").map(Number);
-    const weekday = new Intl.DateTimeFormat("zh-TW", { weekday: "short", timeZone: "UTC" })
-      .format(new Date(keyToUTC(key)));
+    const weekday = weekdayFormat.format(new Date(keyToUTC(key)));
     const diff = Math.round((keyToUTC(key) - keyToUTC(todayKey)) / 86400000);
     const rel = { "0": "今天", "1": "明天", "2": "後天" }[diff] || "";
     return { text: `${m}/${d}（${weekday.replace("週", "")}）`, rel };
@@ -181,6 +179,7 @@
       const res = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       state.data = sanitize(await res.json());
+      pruneEntries();
       state.loadError = null;
       lastLoad = Date.now();
       renderGroups();
@@ -205,8 +204,7 @@
     });
   }
 
-  // Rebuilt on load and when ⚙ settings change; counts are filled in by
-  // updateGroupCounts on every render.
+  // Rebuilt on load and when ⚙ settings change.
   function renderGroups() {
     const groups = allGroups().filter((g) => !state.hiddenGroups.has(g));
     if (state.group !== "all" && !groups.includes(state.group)) {
@@ -220,19 +218,11 @@
       b.type = "button";
       b.className = "chip";
       b.dataset.group = value;
-      b.dataset.label = label;
+      b.textContent = label;
       b.setAttribute("aria-pressed", String(state.group === value));
       frag.append(b);
     }
     els.groups.replaceChildren(frag);
-  }
-
-  function updateGroupCounts(items) {
-    const counts = new Map([["all", items.length]]);
-    for (const it of items) counts.set(it.group, (counts.get(it.group) || 0) + 1);
-    for (const b of els.groups.querySelectorAll(".chip")) {
-      b.textContent = `${b.dataset.label} ${counts.get(b.dataset.group) || 0}`;
-    }
   }
 
   function renderChipSettings() {
@@ -278,20 +268,35 @@
     els.stale.hidden = !(d.generatedAt === null || now - d.generatedAt > STALE_MS);
   }
 
-  function buildEntry(it, now, todayKey) {
-    const node = els.tpl.content.firstElementChild.cloneNode(true);
-    const untilStart = it.start - now;
-    const isSoon = !it.isLive && untilStart >= 0 && untilStart <= SOON_MS;
-    const isEnded = !it.isLive && -untilStart > ENDED_AFTER_MS;
-    node.classList.toggle("is-live", it.isLive);
-    node.classList.toggle("is-soon", isSoon);
-    node.classList.toggle("is-ended", isEnded);
+  // Row nodes are reused across renders (filters, timezone, the per-minute
+  // tick) and across data refreshes while their content is unchanged; only the
+  // time-dependent parts are updated. Recreating rows made every thumbnail
+  // reload and blink once a minute.
+  const entryNodes = new Map(); // id → { node, sig }
 
-    const link = node.querySelector(".entry-link");
-    link.href = it.url;
-    const status = it.isLive ? "直播中，" : isSoon ? "即將開始，" : "";
-    const titlePart = it.title ? `：${it.title}` : "";
-    link.setAttribute("aria-label", `${status}${formatTime(it.start)} ${it.member}（${it.group}）${titlePart}，在 YouTube 開啟`);
+  function entrySignature(it) {
+    return [it.url, it.thumbnail, it.member, it.group, it.title].join("\u0000");
+  }
+
+  function entryFor(it) {
+    const sig = entrySignature(it);
+    let cached = entryNodes.get(it.id);
+    if (!cached || cached.sig !== sig) {
+      cached = { node: createEntry(it), sig };
+      entryNodes.set(it.id, cached);
+    }
+    return cached.node;
+  }
+
+  // Drop rows for streams that are no longer in the data.
+  function pruneEntries() {
+    const ids = new Set(state.data.items.map((it) => it.id));
+    for (const id of entryNodes.keys()) if (!ids.has(id)) entryNodes.delete(id);
+  }
+
+  function createEntry(it) {
+    const node = els.tpl.content.firstElementChild.cloneNode(true);
+    node.querySelector(".entry-link").href = it.url;
 
     const img = node.querySelector("img");
     if (it.thumbnail) {
@@ -301,24 +306,10 @@
       img.remove();
       node.querySelector(".thumb").classList.add("no-img");
     }
-    if (isSoon) {
-      const mins = Math.max(1, Math.ceil(untilStart / 60000));
-      node.querySelector(".badge-soon").textContent = `${mins} 分鐘後`;
-    }
 
-    const time = node.querySelector(".time");
-    time.textContent = formatTime(it.start);
-    time.dateTime = it.start.toISOString();
-    if (dayKey(it.start) !== todayKey) {
-      // A live stream that started on another day is listed under today.
-      const day = document.createElement("small");
-      day.className = "time-day";
-      const p = partsOf(it.start, { month: "numeric", day: "numeric" });
-      day.textContent = `${p.month}/${p.day}`;
-      time.prepend(day);
-    }
-    node.querySelector(".member").textContent = it.member;
-    node.querySelector(".member").title = it.member;
+    const member = node.querySelector(".member");
+    member.textContent = it.member;
+    member.title = it.member;
     const streamTitle = node.querySelector(".stream-title");
     if (it.title) {
       streamTitle.textContent = it.title;
@@ -332,6 +323,37 @@
     return node;
   }
 
+  // Everything that depends on the clock or the selected timezone.
+  function updateEntry(node, it, now, todayKey) {
+    const untilStart = it.start - now;
+    const isSoon = !it.isLive && untilStart >= 0 && untilStart <= SOON_MS;
+    const isEnded = !it.isLive && -untilStart > ENDED_AFTER_MS;
+    node.classList.toggle("is-live", it.isLive);
+    node.classList.toggle("is-soon", isSoon);
+    node.classList.toggle("is-ended", isEnded);
+    node.querySelector(".badge-soon").textContent =
+      isSoon ? `${Math.max(1, Math.ceil(untilStart / 60000))} 分鐘後` : "";
+
+    const timeText = formatTime(it.start);
+    const time = node.querySelector(".time");
+    time.textContent = timeText;
+    time.dateTime = it.start.toISOString();
+    if (dayKey(it.start) !== todayKey) {
+      // A live stream that started on another day is listed under today.
+      const day = document.createElement("small");
+      day.className = "time-day";
+      const p = partsOf(it.start, MONTH_DAY_OPTS);
+      day.textContent = `${p.month}/${p.day}`;
+      time.prepend(day);
+    }
+
+    const status = it.isLive ? "直播中，" : isSoon ? "即將開始，" : "";
+    const titlePart = it.title ? `：${it.title}` : "";
+    node.querySelector(".entry-link").setAttribute(
+      "aria-label", `${status}${timeText} ${it.member}（${it.group}）${titlePart}，在 YouTube 開啟`);
+    return node;
+  }
+
   function render() {
     const now = Date.now();
     renderStatus(now);
@@ -342,7 +364,6 @@
     const todayKey = dayKey(new Date(now));
     const current = state.data.items.filter((it) =>
       !state.hiddenGroups.has(it.group) && (it.isLive || dayKey(it.start) >= todayKey));
-    updateGroupCounts(current);
 
     const visible = current.filter((it) =>
       (state.group === "all" || it.group === state.group) &&
@@ -385,7 +406,7 @@
         const tag = document.createElement("span");
         tag.className = "today";
         tag.textContent = rel;
-        if (rel !== "今天") tag.style.background = "var(--muted)";
+        if (rel !== "今天") tag.classList.add("later");
         h.append(tag);
       }
       const count = document.createElement("span");
@@ -396,7 +417,7 @@
       list.className = "list";
       for (const row of rows) {
         if (row === NOW) list.append((nowLine = buildNowLine(now)));
-        else list.append(buildEntry(row, now, todayKey));
+        else list.append(updateEntry(entryFor(row), row, now, todayKey));
       }
       section.append(h, list);
       frag.append(section);
@@ -434,13 +455,10 @@
   function bind() {
     els.tz.value = state.tz;
     els.hideEnded.checked = state.hideEnded;
-    els.theme.value = state.theme;
-    applyTheme();
 
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
     els.tz.addEventListener("change", () => { state.tz = els.tz.value; savePrefs(); pendingScroll = true; render(); });
-    els.theme.addEventListener("change", () => { state.theme = els.theme.value; savePrefs(); applyTheme(); });
     els.hideEnded.addEventListener("change", () => { state.hideEnded = els.hideEnded.checked; savePrefs(); pendingScroll = true; render(); });
     els.groups.addEventListener("click", (e) => {
       const btn = e.target.closest(".chip");
@@ -475,7 +493,8 @@
       }
     });
 
-    setInterval(load, REFRESH_MS);
+    // Hidden tabs neither fetch nor render; visibilitychange catches up.
+    setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS);
     setInterval(() => { if (!document.hidden) render(); }, TICK_MS);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) return;
