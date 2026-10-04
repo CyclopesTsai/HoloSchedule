@@ -8,7 +8,7 @@
   const TICK_MS = 60 * 1000;          // re-render relative labels
   const STALE_MS = 60 * 60 * 1000;    // generated_at older than this → warning
   const SOON_MS = 60 * 60 * 1000;     // "即將開始" window
-  const ENDED_AFTER_MS = 30 * 60 * 1000; // not live and started this long ago → treat as ended
+  const ENDED_AFTER_MS = 30 * 60 * 1000; // not live although started this long before the data snapshot → ended
   const STORAGE_KEY = "holoschedule:prefs";
 
   const GROUP_ORDER = ["hololive", "HOLOSTARS", "HOLOSTARS English", "mekPark", "COVER"];
@@ -340,13 +340,18 @@
     return node;
   }
 
-  // live: the site marks it live. pending: start time passed less than
-  // ENDED_AFTER_MS ago but not live (yet), e.g. a stream running a few minutes
-  // late or data that hasn't caught up. ended: started longer ago, not live.
+  // live: the data marks it live. upcoming: start time still ahead.
+  // pending: start time has passed but the data can't tell whether it is
+  // running, because the snapshot (generated_at) was taken before the start or
+  // within ENDED_AFTER_MS of it. ended: the snapshot was taken more than
+  // ENDED_AFTER_MS after the start and it wasn't live then.
+  // Judging "ended" against the snapshot rather than the clock means stale
+  // data (e.g. a delayed update) never turns a running stream into "ended".
   function streamState(it, now) {
     if (it.isLive) return "live";
     if (it.start > now) return "upcoming";
-    return now - it.start <= ENDED_AFTER_MS ? "pending" : "ended";
+    const asOf = state.data?.generatedAt?.getTime() ?? now;
+    return it.start.getTime() >= asOf - ENDED_AFTER_MS ? "pending" : "ended";
   }
 
   // Everything that depends on the clock or the selected timezone.
@@ -359,7 +364,9 @@
     node.classList.toggle("is-ended", st === "ended");
     node.classList.toggle("is-playing", it.id === state.playingId);
     node.querySelector(".badge-soon").textContent =
-      st === "pending" ? "即將開始" : isSoon ? `${Math.max(1, Math.ceil(untilStart / 60000))} 分鐘後` : "";
+      // Just past the start → probably about to begin; longer than that → the
+      // data is too old to say.
+      st === "pending" ? (now - it.start <= ENDED_AFTER_MS ? "即將開始" : "待確認") : isSoon ? `${Math.max(1, Math.ceil(untilStart / 60000))} 分鐘後` : "";
 
     const timeText = formatTime(it.start);
     const time = node.querySelector(".time");
