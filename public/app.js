@@ -338,7 +338,7 @@
     const time = node.querySelector(".time");
     time.textContent = timeText;
     time.dateTime = it.start.toISOString();
-    if (dayKey(it.start) !== todayKey) {
+    if (it.isLive && dayKey(it.start) !== todayKey) {
       // A live stream that started on another day is listed under today.
       const day = document.createElement("small");
       day.className = "time-day";

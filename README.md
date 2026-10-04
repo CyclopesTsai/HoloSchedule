@@ -110,14 +110,14 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
 - 顯示最後更新時間；`generated_at` 超過 1 小時會顯示「資料可能已過期」。
 - 頁面開著時每 5 分鐘重新讀取 `data.json`（附 `?t=` cache-busting），每分鐘更新相對時間標示。
 - 縮圖 `loading="lazy"`，容器固定寬度與 16:9 比例避免版面跳動；手機優先 RWD。
-- 固定色系（深色點狀背景＋羊皮紙內容區），與 [FFXIVTools](https://cyclopestsai.github.io/FFXIVTools/) 一致，不提供深淺色切換。
+- 固定色系：深棕色頂欄、米色點紋背景、羊皮紙內容區，風格參考 [FFXIVTools](https://cyclopestsai.github.io/FFXIVTools/)，不提供深淺色切換。
 
 ### 效能
 
 - 傳輸量：頁面＋CSS＋JS 約 12 KB（gzip），`data.json` 約 11 KB（gzip），每 5 分鐘一次；縮圖約 17 KB／張，延遲載入。
 - 每列的 DOM 節點只在內容（連結、縮圖、成員、標題）改變時才重建；每分鐘的更新與切換時區／篩選只改時間、狀態等文字，縮圖 `<img>` 不會被重建（舊版每分鐘重建所有列，造成縮圖閃爍）。
 - `Intl.DateTimeFormat` 依時區與格式快取重用；一次重繪約 5–7 ms（桌機 Chrome，約 50 列）。
-- 分頁在背景時不重新抓資料也不重繪，切回前景時才補上；頂端列為實色背景，不使用 `backdrop-filter`，捲動時不需持續重繪模糊效果。
+- 分頁在背景時不重新抓資料也不重繪，切回前景時才補上；頂欄為實色背景，不使用 `backdrop-filter`，捲動時不需持續重繪模糊效果。
 - 連結以新分頁開啟（`rel="noopener noreferrer"`）。
 - 快取：GitHub Pages 對所有檔案固定送 `Cache-Control: max-age=600`，且無法自訂 header。部署時 `scripts/stamp_assets.py` 會把 `index.html` 裡的 `style.css`、`app.js` 改成 `?v=<內容雜湊>`，檔案一改網址就變，瀏覽器會立刻抓新版；`index.html` 本身最多仍可能被快取 10 分鐘。
 

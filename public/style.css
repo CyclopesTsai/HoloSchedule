@@ -1,13 +1,17 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later
    Copyright (C) 2026 CyclopesTsai */
 
-/* One fixed palette: a dark dotted backdrop with a parchment sheet, matching
-   https://cyclopestsai.github.io/FFXIVTools/ (no light/dark switching). */
+/* One fixed palette: a parchment sheet on a beige dotted page under a brown
+   title bar, after https://cyclopestsai.github.io/FFXIVTools/ (no light/dark
+   switching). */
 :root {
-  --backdrop: #121212;
-  --backdrop-dot: #2c2c2c;
-  --on-backdrop: #f8f1e5;
-  --on-backdrop-muted: #a99a85;
+  --backdrop: #ece3d0;
+  --backdrop-dot: #dccfb5;
+  --bar: #5d4037;
+  --bar-line: #3e2723;
+  --on-bar: #f8f1e5;
+  --on-bar-muted: #d8c7b0;
+  --gold-light: #e8c56a;
 
   --paper: #f8f1e5;
   --paper-dark: #e6d5b8;
@@ -42,7 +46,7 @@ body {
   background-color: var(--backdrop);
   background-image: radial-gradient(var(--backdrop-dot) 1px, transparent 1px);
   background-size: 20px 20px;
-  color: var(--on-backdrop);
+  color: var(--ink);
   font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.5;
@@ -75,8 +79,10 @@ a { color: var(--accent); }
   top: 0;
   z-index: 10;
   padding: 10px 0 8px;
-  background: var(--backdrop);
-  border-bottom: 1px solid rgba(184, 134, 11, .35);
+  background: var(--bar);
+  color: var(--on-bar);
+  border-bottom: 1px solid var(--bar-line);
+  box-shadow: 0 2px 8px rgba(62, 39, 35, .25);
 }
 
 .title-row {
@@ -90,19 +96,19 @@ h1 {
   font-size: 1.15rem;
   margin: 0;
   letter-spacing: .08em;
-  color: var(--on-backdrop);
+  color: var(--on-bar);
 }
 
 .unofficial {
   font-size: .7rem;
   padding: 0 7px;
-  border: 1px solid rgba(184, 134, 11, .6);
+  border: 1px solid var(--gold-light);
   border-radius: 999px;
-  color: var(--gold);
+  color: var(--gold-light);
 }
 
-.status { margin: 0; color: var(--on-backdrop-muted); font-size: .78rem; }
-.status.error { color: #f08a8a; }
+.status { margin: 0; color: var(--on-bar-muted); font-size: .78rem; }
+.status.error { color: #ffc2b8; }
 @media (min-width: 600px) { .status { margin-left: auto; } }
 
 .stale {
@@ -136,9 +142,9 @@ h1 {
 .chip, .gear {
   flex: 0 0 auto;
   font: inherit;
-  color: var(--on-backdrop);
-  background: rgba(248, 241, 229, .06);
-  border: 1px solid rgba(248, 241, 229, .22);
+  color: var(--on-bar);
+  background: rgba(248, 241, 229, .08);
+  border: 1px solid rgba(248, 241, 229, .35);
   cursor: pointer;
 }
 .chip {
@@ -163,7 +169,7 @@ h1 {
   padding: 0;
   border-radius: 50%;
 }
-.gear:hover, .gear[aria-expanded="true"] { border-color: var(--gold); color: var(--gold); }
+.gear:hover, .gear[aria-expanded="true"] { border-color: var(--gold-light); color: var(--gold-light); }
 
 /* Settings dropdown: a small parchment card under the ⚙ button. */
 .chip-settings {
@@ -179,7 +185,7 @@ h1 {
   background: var(--paper);
   border: 1px solid var(--paper-line);
   border-radius: var(--radius);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .6);
+  box-shadow: 0 12px 32px rgba(62, 39, 35, .35);
 }
 
 .setting {
@@ -242,7 +248,7 @@ select {
   background-image: radial-gradient(ellipse at top, rgba(255, 255, 255, .55), transparent 70%);
   border: 1px solid var(--paper-line);
   border-radius: 4px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, .8), inset 0 0 80px rgba(184, 134, 11, .08);
+  box-shadow: 0 6px 18px rgba(93, 64, 55, .2), inset 0 0 80px rgba(184, 134, 11, .08);
 }
 /* Thin gold frame inside the sheet. */
 .paper::before {
@@ -453,8 +459,8 @@ select {
 
 .site-footer {
   padding: 4px 0 calc(24px + env(safe-area-inset-bottom));
-  color: var(--on-backdrop-muted);
+  color: var(--ink-soft);
   font-size: .82rem;
 }
 .site-footer p { margin: 4px 0; }
-.site-footer a { color: #d9b45a; }
+.site-footer a { color: var(--accent); }
