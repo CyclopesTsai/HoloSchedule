@@ -73,7 +73,21 @@ a { color: var(--accent); }
 
 /* ---------------------------------------------------------------- header */
 
-.site-header { padding: 16px 0 8px; }
+.site-header { padding: 16px 0 12px; }
+
+.header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.settings {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
 
 .title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
@@ -113,38 +127,24 @@ h1 { font-size: 1.35rem; margin: 0; letter-spacing: .02em; }
   border-bottom: 1px solid var(--border);
 }
 
-.control-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.control-row + .control-row { margin-top: 8px; }
-
-.search { flex: 1 1 200px; }
-
-input[type="search"], select {
-  width: 100%;
+select {
   font: inherit;
   font-size: 16px; /* prevents iOS zoom on focus */
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 7px 10px;
-  min-height: 40px;
+  padding: 6px 10px;
+  min-height: 38px;
 }
-input[type="search"]:focus-visible, select:focus-visible, .chip:focus-visible, .entry-link:focus-visible {
+select:focus-visible, .chip:focus-visible, .entry-link:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.tz { flex: 0 0 auto; }
-
 .chips {
   display: flex;
   gap: 6px;
-  flex: 1 1 auto;
   overflow-x: auto;
   scrollbar-width: none;
   padding-bottom: 2px;

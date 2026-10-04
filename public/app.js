@@ -23,7 +23,6 @@
   const els = {
     status: $("status"),
     stale: $("stale"),
-    search: $("search"),
     tz: $("tz"),
     groups: $("groups"),
     hideEnded: $("hide-ended"),
@@ -37,7 +36,6 @@
     loadError: null,
     tz: "Asia/Taipei",
     group: "all",
-    query: "",
     hideEnded: false,
   };
 
@@ -117,12 +115,6 @@
 
   // ----------------------------------------------------------------- data
 
-  // Width/case-insensitive and katakana → hiragana, so "すばる" finds "スバル".
-  function fold(text) {
-    return String(text).normalize("NFKC").toLowerCase()
-      .replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
-  }
-
   function sanitize(raw) {
     if (!raw || !Array.isArray(raw.items)) throw new Error("data.json 格式錯誤");
     const generatedAt = new Date(raw.generated_at);
@@ -142,7 +134,6 @@
         url,
         thumbnail: thumb,
         isLive: it.is_live === true,
-        searchKey: fold(it.member || ""),
       });
     }
     items.sort((a, b) => a.start - b.start);
@@ -277,10 +268,8 @@
     const current = state.data.items.filter((it) => it.isLive || dayKey(it.start) >= todayKey);
     updateGroupCounts(current);
 
-    const q = fold(state.query).trim();
     const visible = current.filter((it) =>
       (state.group === "all" || it.group === state.group) &&
-      (!q || it.searchKey.includes(q)) &&
       !(state.hideEnded && !it.isLive && now - it.start > ENDED_AFTER_MS));
 
     // Today's list reads: started/ended → every live stream as one block →
@@ -341,7 +330,7 @@
 
     if (pendingScroll) {
       pendingScroll = false;
-      if (nowLine && !state.query) requestAnimationFrame(() => scrollToNow(nowLine));
+      if (nowLine) requestAnimationFrame(() => scrollToNow(nowLine));
     }
   }
 
@@ -373,7 +362,6 @@
 
     els.tz.addEventListener("change", () => { state.tz = els.tz.value; savePrefs(); pendingScroll = true; render(); });
     els.hideEnded.addEventListener("change", () => { state.hideEnded = els.hideEnded.checked; savePrefs(); pendingScroll = true; render(); });
-    els.search.addEventListener("input", () => { state.query = els.search.value; render(); });
     els.groups.addEventListener("click", (e) => {
       const btn = e.target.closest(".chip");
       if (!btn) return;
