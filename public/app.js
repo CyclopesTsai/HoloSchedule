@@ -22,6 +22,11 @@
     "mekPark": "var(--g-mekpark)",
     "COVER": "var(--g-cover)",
   };
+  // Features being tried out, listed in ⚙ → 試驗性功能 as switches (off by
+  // default). Entries: { key, label, note? }; check with experimentOn(key).
+  // The section is hidden while this list is empty.
+  const EXPERIMENTS = [];
+
   const TZ_LABEL = { "Asia/Taipei": "台北時間", "Asia/Tokyo": "東京時間", "local": "瀏覽器本地時間" };
 
   const $ = (id) => document.getElementById(id);
@@ -42,6 +47,8 @@
     gear: $("chip-settings-btn"),
     chipSettings: $("chip-settings"),
     chipSettingsList: $("chip-settings-list"),
+    expSection: $("exp-section"),
+    expList: $("exp-list"),
     days: $("days"),
     empty: $("empty"),
     tpl: $("entry-tpl"),
@@ -56,6 +63,7 @@
     playingId: null,
     playerWidth: null,   // px chosen by dragging; null = CSS default
     hiddenGroups: new Set(DEFAULT_HIDDEN_GROUPS),
+    experiments: {},     // key → boolean, only keys listed in EXPERIMENTS
   };
 
   // Scroll to the first live stream (or "now") after the next render that has
@@ -73,6 +81,9 @@
       state.hideEnded = saved.hideEnded === true;
       if (Number.isFinite(saved.playerWidth)) state.playerWidth = saved.playerWidth;
       if (Array.isArray(saved.hiddenGroups)) state.hiddenGroups = new Set(saved.hiddenGroups.map(String));
+      for (const { key } of EXPERIMENTS) {
+        if (saved.experiments?.[key] === true) state.experiments[key] = true;
+      }
     } catch (_) { /* storage unavailable: use defaults */ }
   }
 
@@ -84,6 +95,7 @@
         hideEnded: state.hideEnded,
         playerWidth: state.playerWidth,
         hiddenGroups: [...state.hiddenGroups],
+        experiments: state.experiments,
       }));
     } catch (_) { /* ignore */ }
   }
@@ -237,6 +249,34 @@
       frag.append(b);
     }
     els.groups.replaceChildren(frag);
+  }
+
+  function experimentOn(key) {
+    return state.experiments[key] === true;
+  }
+
+  function renderExperiments() {
+    els.expSection.hidden = EXPERIMENTS.length === 0;
+    const frag = document.createDocumentFragment();
+    for (const { key, label, note } of EXPERIMENTS) {
+      const row = document.createElement("label");
+      row.className = "toggle setting";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.dataset.key = key;
+      box.checked = experimentOn(key);
+      const text = document.createElement("span");
+      text.textContent = label;
+      row.append(box, text);
+      frag.append(row);
+      if (note) {
+        const p = document.createElement("p");
+        p.className = "chip-settings-note";
+        p.textContent = note;
+        frag.append(p);
+      }
+    }
+    els.expList.replaceChildren(frag);
   }
 
   function renderChipSettings() {
@@ -815,6 +855,7 @@
   function bind() {
     els.tz.value = state.tz;
     els.hideEnded.checked = state.hideEnded;
+    renderExperiments();
     applyPlayerWidth();
     bindPlayerResizer();
 
@@ -844,6 +885,14 @@
     });
 
     els.gear.addEventListener("click", () => setChipSettingsOpen(els.chipSettings.hidden));
+    els.expList.addEventListener("change", (e) => {
+      const key = e.target.dataset.key;
+      if (!key) return;
+      if (e.target.checked) state.experiments[key] = true;
+      else delete state.experiments[key];
+      savePrefs();
+      render();
+    });
     els.chipSettingsList.addEventListener("change", (e) => {
       const box = e.target;
       if (box.checked) state.hiddenGroups.delete(box.value);
