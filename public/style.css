@@ -265,6 +265,7 @@ main { padding-top: 8px; padding-bottom: 24px; min-height: 50vh; }
   font-variant-numeric: tabular-nums;
 }
 .entry.is-live .time { color: var(--live); }
+.time-day { display: block; font-size: .7rem; font-weight: 600; color: var(--muted); line-height: 1.1; }
 
 .thumb {
   position: relative;

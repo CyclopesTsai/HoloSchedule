@@ -220,7 +220,7 @@
     els.stale.hidden = !(d.generatedAt === null || now - d.generatedAt > STALE_MS);
   }
 
-  function buildEntry(it, now) {
+  function buildEntry(it, now, todayKey) {
     const node = els.tpl.content.firstElementChild.cloneNode(true);
     const untilStart = it.start - now;
     const isSoon = !it.isLive && untilStart >= 0 && untilStart <= SOON_MS;
@@ -250,6 +250,14 @@
     const time = node.querySelector(".time");
     time.textContent = formatTime(it.start);
     time.dateTime = it.start.toISOString();
+    if (dayKey(it.start) !== todayKey) {
+      // A live stream that started on another day is listed under today.
+      const day = document.createElement("small");
+      day.className = "time-day";
+      const p = partsOf(it.start, { month: "numeric", day: "numeric" });
+      day.textContent = `${p.month}/${p.day}`;
+      time.prepend(day);
+    }
     node.querySelector(".member").textContent = it.member;
     node.querySelector(".member").title = it.member;
     const group = node.querySelector(".group");
@@ -275,16 +283,34 @@
       (!q || it.searchKey.includes(q)) &&
       !(state.hideEnded && !it.isLive && now - it.start > ENDED_AFTER_MS));
 
-    const byDay = new Map();
+    // Today's list reads: started/ended → every live stream as one block →
+    // 現在 → upcoming. Live streams are pulled out of strict time order so an
+    // ended stream never sits between two live ones.
+    const NOW = Symbol("now");
+    const days = new Map();
+    const dayRows = (key) => {
+      if (!days.has(key)) days.set(key, []);
+      return days.get(key);
+    };
+    const live = visible.filter((it) => it.isLive);
+    const upcomingToday = [];
     for (const it of visible) {
+      if (it.isLive) continue;
       const key = dayKey(it.start);
-      if (!byDay.has(key)) byDay.set(key, []);
-      byDay.get(key).push(it);
+      if (key === todayKey && it.start > now) upcomingToday.push(it);
+      else dayRows(key).push(it);
+    }
+    if (live.length || upcomingToday.length || days.has(todayKey)) {
+      dayRows(todayKey).push(...live, NOW, ...upcomingToday);
+    } else if (days.size) {
+      // Nothing today: mark "now" at the top of the next day.
+      days.get([...days.keys()].sort()[0]).unshift(NOW);
     }
 
-    const lists = new Map();
+    let nowLine = null;
     const frag = document.createDocumentFragment();
-    for (const [key, items] of byDay) {
+    for (const key of [...days.keys()].sort()) {
+      const rows = days.get(key);
       const section = document.createElement("section");
       const h = document.createElement("h2");
       h.className = "day-heading";
@@ -299,16 +325,17 @@
       }
       const count = document.createElement("span");
       count.className = "count";
-      count.textContent = `${items.length} 筆`;
+      count.textContent = `${rows.filter((r) => r !== NOW).length} 筆`;
       h.append(count);
       const list = document.createElement("ul");
       list.className = "list";
-      for (const it of items) list.append(buildEntry(it, now));
-      lists.set(key, list);
+      for (const row of rows) {
+        if (row === NOW) list.append((nowLine = buildNowLine(now)));
+        else list.append(buildEntry(row, now, todayKey));
+      }
       section.append(h, list);
       frag.append(section);
     }
-    const nowLine = insertNowLine(visible, lists, todayKey, now);
     els.days.replaceChildren(frag);
     els.empty.hidden = visible.length > 0;
 
@@ -318,27 +345,12 @@
     }
   }
 
-  // A "現在 HH:MM" row before the first stream that hasn't started yet.
-  function insertNowLine(visible, lists, todayKey, now) {
-    if (!lists.size) return null;
+  function buildNowLine(now) {
     const li = document.createElement("li");
     li.className = "now-line";
     const label = document.createElement("span");
     label.textContent = `現在 ${formatTime(new Date(now))}`;
     li.append(label);
-
-    const index = visible.findIndex((it) => it.start > now);
-    const next = index >= 0 ? visible[index] : null;
-    const todayList = lists.get(todayKey);
-    if (next && (dayKey(next.start) === todayKey || !todayList)) {
-      // Entries are appended in the same order as `visible`, so count within the day.
-      const nextKey = dayKey(next.start);
-      const before = visible.slice(0, index).filter((it) => dayKey(it.start) === nextKey).length;
-      const list = lists.get(nextKey);
-      list.insertBefore(li, list.children[before] || null);
-    } else {
-      (todayList || [...lists.values()].pop()).append(li);
-    }
     return li;
   }
 
