@@ -151,7 +151,7 @@ python3 -m venv .venv
 4. 成功後網址為 `https://cyclopestsai.github.io/HoloSchedule/`。
 5. 建議也手動執行一次 **Keepalive**，確認它有權限呼叫 enable API。
 
-`update.yml` 的觸發條件為每 15 分鐘的 cron、手動 `workflow_dispatch`、push 到 `main`。權限只有 `contents: read`、`pages: write`、`id-token: write`，並用 `concurrency: pages`（不取消進行中的 run）避免部署互相覆蓋。`data.json` 只存在於 Pages 部署產物中，不會 commit 回 repo。
+`update.yml` 的觸發條件為每 15 分鐘的 cron（`7,22,37,52 * * * *`，刻意避開整點與每刻鐘的尖峰，GitHub 官方建議如此以減少延遲或被略過）、手動 `workflow_dispatch`、push 到 `main`。權限只有 `contents: read`、`pages: write`、`id-token: write`，並用 `concurrency: pages`（不取消進行中的 run）避免部署互相覆蓋。`data.json` 只存在於 Pages 部署產物中，不會 commit 回 repo。
 
 使用的官方 actions（2026-10-04 查證的最新穩定版）：`actions/checkout@v7`、`actions/setup-python@v7`、`actions/upload-pages-artifact@v5`、`actions/deploy-pages@v5`。
 

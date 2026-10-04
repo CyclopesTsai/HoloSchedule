@@ -2,7 +2,9 @@ name: Update schedule
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Every 15 minutes, off the :00/:15/:30/:45 peaks: GitHub delays or drops
+    # scheduled runs under load, worst at the top of the hour.
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
   push:
     branches: [main]
