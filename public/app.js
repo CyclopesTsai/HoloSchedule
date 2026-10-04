@@ -60,8 +60,9 @@
     hiddenGroups: new Set(DEFAULT_HIDDEN_GROUPS),
   };
 
-  // Scroll to "now" after the next render that has data (initial load, or the
-  // view changed). Auto-refresh and the per-minute tick never move the page.
+  // Scroll to the first live stream (or "now") after the next render that has
+  // data (initial load, or the view changed). Auto-refresh and the per-minute
+  // tick never move the page.
   let pendingScroll = true;
 
   // ---------------------------------------------------------------- prefs
@@ -464,7 +465,10 @@
 
     if (pendingScroll) {
       pendingScroll = false;
-      if (nowLine) scrollToNow(nowLine); // layout is read synchronously; works in background tabs too
+      // Layout is read synchronously, so this works in background tabs too.
+      const firstLive = els.days.querySelector(".entry.is-live");
+      if (firstLive) scrollToTop(firstLive);
+      else if (nowLine) scrollToNow(nowLine);
     }
   }
 
@@ -477,14 +481,25 @@
     return li;
   }
 
-  // Put the "now" row ~40% down the visible area, so the streams that just
-  // started (usually the live ones) stay in view above it.
-  function scrollToNow(el) {
+  // Scroll so `el` sits `offset` px below the pinned topbar.
+  function scrollBelowTopbar(el, offset) {
     const stickyHeight = document.querySelector(".topbar").offsetHeight;
-    const context = (window.innerHeight - stickyHeight) * 0.4;
-    const top = el.getBoundingClientRect().top + window.scrollY - stickyHeight - context;
+    const top = el.getBoundingClientRect().top + window.scrollY - stickyHeight - offset;
     // Plain (x, y) form: older Safari throws on behavior: "instant".
     window.scrollTo(0, Math.max(0, top));
+  }
+
+  // With streams live, start at the topmost one (the live block runs down to
+  // the 現在 line).
+  function scrollToTop(el) {
+    scrollBelowTopbar(el, 8);
+  }
+
+  // Nothing live: put the "now" row ~40% down the visible area so the streams
+  // that just finished stay in view above it.
+  function scrollToNow(el) {
+    const stickyHeight = document.querySelector(".topbar").offsetHeight;
+    scrollBelowTopbar(el, (window.innerHeight - stickyHeight) * 0.4);
   }
 
   // ------------------------------------------------- experimental player
