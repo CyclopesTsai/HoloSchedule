@@ -12,9 +12,11 @@
 schedule.hololive.tv/lives/{hololive,holostars,holostars_english,mekpark,cover}
         │  (GitHub Actions，每 15 分鐘，逐頁抓取)
         ▼
-scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ──► deploy-pages
-                                                                         │
-                         public/index.html + app.js 讀取 data.json ◄─────┘
+scripts/scrape.py ──► public/data.json + titles.json（標題經 YouTube oEmbed）
+        │
+scripts/stamp_assets.py（CSS/JS 加版本參數）──► upload-pages-artifact ──► deploy-pages
+                                                                              │
+                              public/index.html + app.js 讀取 data.json ◄─────┘
 ```
 
 ```
@@ -22,18 +24,23 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
 ├── .github/workflows/
 │   ├── update.yml       # 測試 → 抓取 → 加版本參數 → 部署 Pages（cron / 手動 / push main）
 │   └── keepalive.yml    # 每月一次，避免排程因 60 天無活動被停用
-├── public/              # 靜態網站（不需 build）；data.json、titles.json 由 scrape.py 產生
+├── public/              # 靜態網站（不需 build）
 │   ├── index.html
 │   ├── style.css
 │   ├── app.js
-│   └── data.json        # 由 scrape.py 產生，不進版控
+│   ├── data.json        # 由 scrape.py 產生，不進版控
+│   └── titles.json      # 標題快取，由 scrape.py 產生，不進版控
 ├── scripts/
-│   ├── scrape.py        # requests + BeautifulSoup 抓取與解析
+│   ├── scrape.py        # requests + BeautifulSoup 抓取與解析、oEmbed 取標題
 │   └── stamp_assets.py  # 部署時替 CSS/JS 網址加上內容雜湊（避免舊快取）
 ├── tests/
-│   ├── fixtures/        # 2026-10-04 存下的原站 HTML 樣本
-│   └── test_scrape.py
-└── requirements.txt
+│   ├── fixtures/        # 2026-10-04 存下的原站 HTML 樣本（第三方內容，見該目錄 README）
+│   ├── conftest.py
+│   ├── test_scrape.py
+│   └── test_stamp_assets.py
+├── pytest.ini
+├── requirements.txt
+└── LICENSE              # AGPL-3.0
 ```
 
 ### 資料來源的解析方式
@@ -106,9 +113,14 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
 - 今天的清單順序為：已結束 → 所有直播中的節目（連成一塊，依開始時間排序）→ 已過開始時間、但資料無法確認狀態的節目（標示「即將開始」或「待確認」）→「現在」分隔線 → 尚未開始。直播中以紅色底色與 LIVE 標記顯示；前一天開始、仍在直播的節目也併入今天的直播區塊，並在時間上方標出日期。1 小時內開始的節目標示「N 分鐘後」。
 - 清單中有一條「現在 HH:MM」分隔線；開啟頁面（以及切換時區、團體、隱藏已結束）時會自動捲動到直播中的第一筆（緊貼頂欄下方）；沒有直播時改為捲到「現在」線，位於畫面約 40% 處。自動重新整理不會移動捲動位置。
 - 團體篩選為單列、可橫向滑動。齒輪選單可勾選要顯示的團體；未勾選的團體完全不顯示（「全部」也不含，也沒有篩選按鈕）。預設不顯示 HOLOSTARS 與 HOLOSTARS English。
-- 標題、最後更新時間與團體篩選固定在畫面頂端，自動捲動後也看得到。時區（台北〔預設〕、東京、瀏覽器本地）、「隱藏已結束」（開始超過 30 分鐘且不在直播中）與要顯示的團體都在齒輪選單中。以上偏好都會記在 localStorage。
+- 標題、最後更新時間與團體篩選固定在畫面頂端，自動捲動後也看得到。時區（台北〔預設〕、東京、瀏覽器本地）、「隱藏已結束的節目」與要顯示的團體都在齒輪選單中。以上偏好都會記在 localStorage。
 - **試驗性功能**：齒輪選單底部的「試驗性功能」區塊會列出正在試驗的功能開關（定義在 `app.js` 的 `EXPERIMENTS`，預設關閉、記在 localStorage）；目前沒有試驗中的功能，所以區塊隱藏。
-- **播放器**：點擊節目時不開新分頁，而是讓清單往左讓出空間，右側上方嵌入影片（`youtube.com/embed`，與聊天室同屬 youtube.com）、下方嵌入聊天室（`youtube.com/live_chat?embed_domain=<網站網域>`）；手機上改為全螢幕顯示。播放器寬度可拖曳左側邊緣調整（或聚焦後用左右鍵，Shift 加大步幅；雙擊還原預設），會記在 localStorage；清單至少保留 420px。⌘／Ctrl＋點擊或中鍵仍會開新分頁，Esc 或 ✕ 關閉（同時移除 iframe，不會在背景繼續播放）。打開播放器時會透過 YouTube IFrame Player API 確認該節目目前的狀態（頂部顯示「YouTube 狀態：直播中／已結束／尚未開始」），若與資料不同，會只在這個瀏覽器暫時更新清單上的狀態（判斷為直播中時也會補上聊天室）；新的 `data.json` 產生後或 6 小時後以伺服器資料為準。若 YouTube 回報無法播放（`isPlayable: false` 或播放器錯誤 101／150，未加入會員時的會員限定直播就是這種情況，年齡限制或禁止嵌入也相同），播放器頂部會提示「可能為會員限定或不允許嵌入」並強調「YouTube ↗」按鈕，清單狀態不變。判斷用的是 YouTube 未公開文件的欄位（`getVideoData().isLive`／`isManifestless` 與影片長度），只在連續兩次一致時採用，判斷不出來就不改；YouTube 若改變這些欄位，此功能可能失效。限制：聊天室只有直播中／待機中的節目可嵌入，已結束的沒有；播放器與聊天室要沿用 YouTube 登入狀態（例如 Premium、在聊天室發言），瀏覽器必須允許第三方 Cookie。Safari 沒有單站例外，需關閉「設定 → 隱私權 → 防止跨網站追蹤」（影響所有網站；已實測關閉後為登入狀態）；少數影片禁止嵌入時，播放器會顯示 YouTube 的錯誤，可用右上角連結改到 YouTube 觀看。
+- **播放器**：點擊節目時清單往左讓出空間，右側上方播放影片（`youtube.com/embed`）、下方嵌入聊天室（`youtube.com/live_chat?embed_domain=<網站網域>`）；手機上改為全螢幕。
+  - ⌘／Ctrl＋點擊或中鍵仍在新分頁開 YouTube（連結為 `target="_blank" rel="noopener noreferrer"`）；Esc 或 ✕ 關閉。
+  - 寬度可拖曳左側邊緣調整（聚焦後也可用左右鍵，Shift 加大步幅；雙擊還原預設），記在 localStorage；清單至少保留 420px。
+  - 打開時會用 YouTube IFrame Player API 確認該節目目前的狀態，頂部顯示「YouTube 狀態：直播中／已結束／尚未開始」。與資料不同時，只在這個瀏覽器暫時更新清單（判斷為直播中且原本沒嵌入聊天室時會補上）；新的 `data.json` 產生後或 6 小時後改回以伺服器資料為準。判斷用的是 YouTube 未公開文件的欄位（`getVideoData().isLive`／`isManifestless` 與影片長度），連續兩次一致才採用，判斷不出來就不改；YouTube 若改變這些欄位，此功能可能失效。
+  - YouTube 回報無法播放時（`isPlayable: false` 或播放器錯誤 101／150；未加入會員時的會員限定直播、年齡限制、禁止嵌入都屬此類），頂部提示「可能為會員限定或不允許嵌入」並強調「YouTube ↗」按鈕，清單狀態不變。
+  - 限制：已結束的直播沒有可嵌入的聊天室。播放器與聊天室要沿用 YouTube 登入狀態（Premium、在聊天室發言），瀏覽器必須允許第三方 Cookie；Safari 沒有單站例外，需關閉「設定 → 隱私權 → 防止跨網站追蹤」（影響所有網站；已實測關閉後為登入狀態）。
 - 顯示最後更新時間；`generated_at` 超過 1 小時，頂欄右上的更新時間會改為橘色粗體（滑鼠移上去有「可能已過期」的說明）。
 - 頁面開著時每 5 分鐘重新讀取 `data.json`（附 `?t=` cache-busting），每分鐘更新相對時間標示。
 - 縮圖 `loading="lazy"`，容器固定寬度與 16:9 比例避免版面跳動；手機優先 RWD。
@@ -116,11 +128,11 @@ scripts/scrape.py ──► public/data.json ──► upload-pages-artifact ─
 
 ### 效能
 
-- 傳輸量：頁面＋CSS＋JS 約 12 KB（gzip），`data.json` 約 11 KB（gzip），每 5 分鐘一次；縮圖約 17 KB／張，延遲載入。
+- 傳輸量：頁面＋CSS＋JS 約 18 KB（gzip），`data.json` 約 10 KB（gzip），每 5 分鐘一次；縮圖約 17 KB／張，延遲載入。YouTube IFrame API 只在第一次打開播放器時載入。
 - 每列的 DOM 節點只在內容（連結、縮圖、成員、標題）改變時才重建；每分鐘的更新與切換時區／篩選只改時間、狀態等文字，縮圖 `<img>` 不會被重建（舊版每分鐘重建所有列，造成縮圖閃爍）。
 - `Intl.DateTimeFormat` 依時區與格式快取重用；一次重繪約 5–7 ms（桌機 Chrome，約 50 列）。
 - 分頁在背景時不重新抓資料也不重繪，切回前景時才補上；頂欄為實色背景，不使用 `backdrop-filter`，捲動時不需持續重繪模糊效果。
-- 連結以新分頁開啟（`rel="noopener noreferrer"`）。
+- 播放器切換或關閉時會銷毀舊的 YouTube 播放器、移除 iframe 並停止狀態檢查（實測連續切換 20 次，頁面上最多同時 2 個 iframe，關閉後為 0，計時器不累積）。
 - 快取：GitHub Pages 對所有檔案固定送 `Cache-Control: max-age=600`，且無法自訂 header。部署時 `scripts/stamp_assets.py` 會把 `index.html` 裡的 `style.css`、`app.js` 改成 `?v=<內容雜湊>`，檔案一改網址就變，瀏覽器會立刻抓新版；`index.html` 本身最多仍可能被快取 10 分鐘。
 
 ## 本機執行
@@ -143,6 +155,8 @@ python3 -m venv .venv
 
 然後打開 <http://localhost:8000/>。（若已啟用 venv，指令即為 `python scripts/scrape.py && python -m http.server -d public`。）
 
+本機的 `index.html` 引用的是沒有版本參數的 `style.css`／`app.js`（版本參數只在部署時加上），修改後若畫面沒變，請強制重新整理（⌘⇧R）。
+
 ## 部署
 
 1. 建立公開 repo 並推送（本 repo：`CyclopesTsai/HoloSchedule`）。
@@ -152,7 +166,7 @@ python3 -m venv .venv
 4. 成功後網址為 `https://cyclopestsai.github.io/HoloSchedule/`。
 5. 建議也手動執行一次 **Keepalive**，確認它有權限呼叫 enable API。
 
-`update.yml` 的觸發條件為每 15 分鐘的 cron（`7,22,37,52 * * * *`，刻意避開整點與每刻鐘的尖峰，GitHub 官方建議如此以減少延遲或被略過）、手動 `workflow_dispatch`、push 到 `main`。權限只有 `contents: read`、`pages: write`、`id-token: write`，並用 `concurrency: pages`（不取消進行中的 run）避免部署互相覆蓋。`data.json` 只存在於 Pages 部署產物中，不會 commit 回 repo。
+`update.yml` 的觸發條件為每 15 分鐘的 cron（`7,22,37,52 * * * *`，刻意避開整點與每刻鐘的尖峰，GitHub 官方建議如此以減少延遲或被略過）、手動 `workflow_dispatch`、push 到 `main`。排程沒跑時，可到 **Actions → Update schedule → Run workflow** 手動更新。權限只有 `contents: read`、`pages: write`、`id-token: write`，並用 `concurrency: pages`（不取消進行中的 run）避免部署互相覆蓋。`data.json` 只存在於 Pages 部署產物中，不會 commit 回 repo。
 
 使用的官方 actions（2026-10-04 查證的最新穩定版）：`actions/checkout@v7`、`actions/setup-python@v7`、`actions/upload-pages-artifact@v5`、`actions/deploy-pages@v5`。
 
@@ -171,7 +185,7 @@ GitHub 官方文件：「In a public repository, scheduled workflows are automat
 ## 已知限制與風險
 
 - **依賴原站 HTML 結構。** 原站改版就可能解析失敗；此時 workflow 會失敗並保留上一版，需要更新 `scrape.py` 與 fixtures。
-- **GitHub Actions 的 cron 不準時**，高負載時可能延遲數分鐘到數十分鐘，甚至跳過；因此網頁上的資料可能落後 15 分鐘以上，「直播中」狀態也會有延遲。
+- **GitHub Actions 的 cron 不準時**，高負載時可能延遲數分鐘到數十分鐘，甚至跳過；因此網頁上的資料可能落後 15 分鐘以上，「直播中」狀態也會有延遲。本 repo 建立後，排程約 9.5 小時才第一次觸發（2026-10-04 14:26 UTC），之後仍有時段被跳過；期間只能靠 push 或手動 `workflow_dispatch` 更新。
 - 「已結束」是推測：以資料抓取時間（`generated_at`）為準，抓取時已開始超過 30 分鐘且不在直播中才算已結束；資料過期時，開始時間在抓取之後的節目會標「待確認」而不是已結束。原站沒有提供結束時間。
 - 只收錄 YouTube 連結；若原站出現其他平台的節目會被略過（log 會記錄）。
 - 直播標題最多可能落後約 3 小時（快取期限）；會員限定或私人影片拿不到標題。oEmbed 沒有正式的用量上限說明，若 YouTube 開始拒絕請求，只會少了標題，節目表照常更新。
