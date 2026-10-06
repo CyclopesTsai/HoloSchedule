@@ -44,6 +44,11 @@
           <input type="checkbox" id="hide-ended">
           <span>隱藏已結束的節目</span>
         </label>
+        <!-- Shown only on touch-first devices (see isMobileDevice in app.js). -->
+        <label class="toggle setting" id="mobile-app-row" hidden>
+          <input type="checkbox" id="mobile-app">
+          <span>行動裝置點擊節目時直接開啟 YouTube App</span>
+        </label>
         <p class="chip-settings-title">要顯示的團體</p>
         <div id="chip-settings-list"></div>
         <p class="chip-settings-note">未勾選的團體不會出現在清單中（包含「全部」）。</p>

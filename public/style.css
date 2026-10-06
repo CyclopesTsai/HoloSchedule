@@ -189,6 +189,7 @@ h1 {
   font-weight: 600;
 }
 .setting + .setting { margin-top: 6px; }
+.setting[hidden] { display: none; }
 
 select {
   font: inherit;
