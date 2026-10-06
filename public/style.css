@@ -214,6 +214,7 @@ select {
   font-weight: 700;
   font-size: .9rem;
 }
+.chip-settings:focus { outline: none; }
 .chip-settings-note { margin: 8px 0 0; font-size: .75rem; color: var(--ink-soft); }
 
 .chip-option {

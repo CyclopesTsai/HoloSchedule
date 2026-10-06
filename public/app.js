@@ -322,7 +322,9 @@
     if (open) renderChipSettings();
     els.chipSettings.hidden = !open;
     els.gear.setAttribute("aria-expanded", String(open));
-    if (open) els.chipSettings.querySelector("select, input")?.focus();
+    // Focus the panel, not its first control: focusing a <select> opens the
+    // picker on iOS. Tab from here reaches the controls.
+    if (open) els.chipSettings.focus({ preventScroll: true });
   }
 
   function renderStatus(now) {
