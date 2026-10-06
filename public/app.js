@@ -893,6 +893,7 @@
 
   function bindPullToRefresh() {
     if (!isStandalone()) return;
+    document.documentElement.classList.add("standalone");
     const ptr = $("ptr");
     const text = ptr.querySelector(".ptr-text");
     let tracking = false;
@@ -903,7 +904,7 @@
     const paint = () => {
       frame = 0;
       const progress = Math.min(1, pull / PTR_THRESHOLD);
-      ptr.style.opacity = String(progress);
+      ptr.style.setProperty("--ptr-progress", String(progress));
       ptr.style.setProperty("--ptr-rot", `${Math.round(progress * 300)}deg`);
       const ready = pull >= PTR_THRESHOLD;
       ptr.classList.toggle("is-ready", ready);
@@ -938,7 +939,6 @@
       tracking = false;
       if (pull >= PTR_THRESHOLD) {
         ptr.classList.add("is-refreshing");
-        ptr.style.opacity = "1";
         text.textContent = "重新整理中…";
         location.reload(); // fresh data and, after a deploy, fresh code
       } else {

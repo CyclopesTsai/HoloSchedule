@@ -557,19 +557,24 @@ body.resizing iframe { pointer-events: none; }
 
 /* ------------------------------------------------------ pull to refresh */
 
-/* Fixed behind the (sticky) topbar; iOS's bounce slides the page down and
-   uncovers it. While reloading it rises above the topbar as a small pill. */
-.ptr {
+/* Home-screen mode only. A brown panel fixed behind the page (z-index -1):
+   the body's own background hides it, but iOS's bounce slides the page down
+   and uncovers it, so the gap above the topbar reads as the bar stretching.
+   40vh tall so the bottom bounce stays beige. While reloading the pill rises
+   above the topbar instead. */
+.ptr { display: none; }
+html.standalone .ptr {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1;
-  height: 64px;
+  z-index: -1;
+  height: 40vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  opacity: 0;
+  padding-top: 20px;
+  background: var(--bar);
   pointer-events: none;
 }
 .ptr-pill {
@@ -578,25 +583,33 @@ body.resizing iframe { pointer-events: none; }
   gap: 8px;
   padding: 6px 14px;
   border-radius: 999px;
-  color: var(--ink-soft);
+  color: var(--on-bar-muted);
   font-size: .8rem;
+  opacity: var(--ptr-progress, 0);
 }
 .ptr-spinner {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2.5px solid var(--paper-line);
-  border-top-color: var(--accent);
+  border: 2.5px solid rgba(248, 241, 229, .3);
+  border-top-color: var(--gold-light);
   transform: rotate(var(--ptr-rot, 0deg));
 }
-.ptr.is-ready .ptr-pill { color: var(--ink); font-weight: 600; }
-.ptr.is-refreshing { z-index: 30; height: auto; top: 8px; }
+.ptr.is-ready .ptr-pill { color: var(--on-bar); font-weight: 600; }
+html.standalone .ptr.is-refreshing {
+  z-index: 30;
+  height: auto;
+  padding-top: 8px;
+  background: none;
+}
 .ptr.is-refreshing .ptr-pill {
+  opacity: 1;
+  color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--paper-line);
   box-shadow: 0 4px 12px rgba(62, 39, 35, .25);
 }
-.ptr.is-refreshing .ptr-spinner { animation: ptr-spin .7s linear infinite; }
+.ptr.is-refreshing .ptr-spinner { border-color: var(--paper-line); border-top-color: var(--accent); animation: ptr-spin .7s linear infinite; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
 
 /* ---------------------------------------------------------------- footer */
