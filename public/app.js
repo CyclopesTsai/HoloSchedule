@@ -880,64 +880,74 @@
 
   // ------------------------------------------------------ pull to refresh
   // Safari has its own pull-to-refresh, but a page opened from the home
-  // screen (standalone) doesn't, so provide one there only.
+  // screen (standalone) doesn't. This one only *reads* the gesture: iOS's own
+  // rubber-band bounce moves the page (all listeners are passive, nothing is
+  // prevented, so scrolling stays smooth) and uncovers an indicator fixed
+  // behind the topbar. Releasing far enough down reloads.
 
-  const PTR_THRESHOLD = 70; // px of indicator travel needed to trigger
-  const PTR_MAX = 110;
+  const PTR_THRESHOLD = 70; // px pulled past the top
 
   function isStandalone() {
     return navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
   }
 
   function bindPullToRefresh() {
+    if (!isStandalone()) return;
     const ptr = $("ptr");
     const text = ptr.querySelector(".ptr-text");
-    let startY = null;
+    let tracking = false;
+    let startY = 0;
     let pull = 0;
+    let frame = 0;
 
-    const reset = () => {
-      pull = 0;
-      ptr.classList.remove("is-pulling", "is-ready");
-      ptr.style.transform = "";
+    const paint = () => {
+      frame = 0;
+      const progress = Math.min(1, pull / PTR_THRESHOLD);
+      ptr.style.opacity = String(progress);
+      ptr.style.setProperty("--ptr-rot", `${Math.round(progress * 300)}deg`);
+      const ready = pull >= PTR_THRESHOLD;
+      ptr.classList.toggle("is-ready", ready);
+      text.textContent = ready ? "放開以重新整理" : "下拉以重新整理";
     };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(paint); };
 
     document.addEventListener("touchstart", (e) => {
-      startY = null;
-      if (!isStandalone() || ptr.classList.contains("is-refreshing")) return;
-      // Only from the very top, one finger, with no overlay open.
-      if (window.scrollY > 0 || e.touches.length !== 1 || !els.player.hidden || !els.chipSettings.hidden) return;
+      tracking = false;
+      pull = 0;
+      if (ptr.classList.contains("is-refreshing") || e.touches.length !== 1) return;
+      if (!els.player.hidden || !els.chipSettings.hidden) return;
       startY = e.touches[0].clientY;
-      ptr.style.top = `${document.querySelector(".topbar").offsetHeight}px`;
+      tracking = window.scrollY <= 0;
     }, { passive: true });
 
     document.addEventListener("touchmove", (e) => {
-      if (startY === null) return;
-      const dy = e.touches[0].clientY - startY;
-      if (dy <= 0 || window.scrollY > 0) { // scrolling the list, not pulling
-        if (pull) reset();
-        return;
+      if (ptr.classList.contains("is-refreshing") || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      // Reaching the top mid-swipe starts the pull from here: one swipe is enough.
+      if (!tracking && window.scrollY <= 0) { tracking = true; startY = y; }
+      if (!tracking) return;
+      // iOS reports the bounce as negative scrollY; the finger travel (with the
+      // bounce's ~0.5 resistance) is the fallback when it doesn't.
+      const fromFinger = window.scrollY <= 0 ? (y - startY) * 0.5 : 0;
+      pull = Math.max(0, -window.scrollY, fromFinger);
+      schedule();
+    }, { passive: true });
+
+    const end = () => {
+      if (!tracking) return;
+      tracking = false;
+      if (pull >= PTR_THRESHOLD) {
+        ptr.classList.add("is-refreshing");
+        ptr.style.opacity = "1";
+        text.textContent = "重新整理中…";
+        location.reload(); // fresh data and, after a deploy, fresh code
+      } else {
+        pull = 0;
+        schedule();
       }
-      e.preventDefault(); // no rubber-band while pulling
-      pull = Math.min(PTR_MAX, dy * 0.5);
-      const ready = pull >= PTR_THRESHOLD;
-      ptr.classList.add("is-pulling");
-      ptr.classList.toggle("is-ready", ready);
-      ptr.style.transform = `translateY(${pull}px)`;
-      text.textContent = ready ? "放開以重新整理" : "下拉以重新整理";
-    }, { passive: false });
-
-    document.addEventListener("touchend", () => {
-      if (startY === null) return;
-      startY = null;
-      if (pull < PTR_THRESHOLD) { reset(); return; }
-      ptr.classList.remove("is-pulling");
-      ptr.classList.add("is-refreshing");
-      ptr.style.transform = `translateY(${PTR_THRESHOLD}px)`;
-      text.textContent = "重新整理中…";
-      location.reload(); // fresh data and, after a deploy, fresh code
-    });
-
-    document.addEventListener("touchcancel", () => { startY = null; reset(); });
+    };
+    document.addEventListener("touchend", end, { passive: true });
+    document.addEventListener("touchcancel", end, { passive: true });
   }
 
   // --------------------------------------------------------------- events
@@ -1026,7 +1036,6 @@
 
   loadPrefs();
   loadOverrides();
-  if (isStandalone()) document.documentElement.classList.add("standalone");
   bindPullToRefresh();
   bind();
   load();

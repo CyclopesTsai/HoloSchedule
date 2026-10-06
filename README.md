@@ -28,6 +28,7 @@ scripts/stamp_assets.py（CSS/JS 加版本參數）──► upload-pages-artifa
 │   ├── index.html
 │   ├── style.css
 │   ├── app.js
+│   ├── apple-touch-icon.png  # iPhone 主畫面圖示（與網頁 favicon 同設計）
 │   ├── data.json        # 由 scrape.py 產生，不進版控
 │   └── titles.json      # 標題快取，由 scrape.py 產生，不進版控
 ├── scripts/

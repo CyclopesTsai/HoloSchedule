@@ -557,33 +557,46 @@ body.resizing iframe { pointer-events: none; }
 
 /* ------------------------------------------------------ pull to refresh */
 
-/* Home-screen (standalone) mode only: no rubber-band bounce. */
-html.standalone { overscroll-behavior-y: none; }
-
-/* Sits hidden just under the topbar and slides down while pulling. */
+/* Fixed behind the (sticky) topbar; iOS's bounce slides the page down and
+   uncovers it. While reloading it rises above the topbar as a small pill. */
 .ptr {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 9;
-  height: 48px;
-  margin-top: -48px;
+  z-index: 1;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  color: var(--ink-soft);
-  font-size: .85rem;
-  background: var(--backdrop);
-  border-bottom: 1px solid var(--paper-line);
+  opacity: 0;
   pointer-events: none;
-  transition: transform .2s ease;
 }
-.ptr.is-pulling { transition: none; }
-.ptr-icon { display: inline-block; transition: transform .2s ease; }
-.ptr.is-ready .ptr-icon { transform: rotate(180deg); }
-.ptr.is-refreshing .ptr-icon { animation: ptr-spin .8s linear infinite; }
+.ptr-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  color: var(--ink-soft);
+  font-size: .8rem;
+}
+.ptr-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2.5px solid var(--paper-line);
+  border-top-color: var(--accent);
+  transform: rotate(var(--ptr-rot, 0deg));
+}
+.ptr.is-ready .ptr-pill { color: var(--ink); font-weight: 600; }
+.ptr.is-refreshing { z-index: 30; height: auto; top: 8px; }
+.ptr.is-refreshing .ptr-pill {
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  box-shadow: 0 4px 12px rgba(62, 39, 35, .25);
+}
+.ptr.is-refreshing .ptr-spinner { animation: ptr-spin .7s linear infinite; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
 
 /* ---------------------------------------------------------------- footer */
