@@ -573,7 +573,6 @@ html.standalone .ptr {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 20px;
   background: var(--bar);
   pointer-events: none;
 }
@@ -586,6 +585,8 @@ html.standalone .ptr {
   color: var(--on-bar-muted);
   font-size: .8rem;
   opacity: var(--ptr-progress, 0);
+  /* Centred in the uncovered gap (as tall as the pull) so it's never half hidden. */
+  transform: translateY(max(0px, calc(var(--ptr-pull, 0px) / 2 - 50%)));
 }
 .ptr-spinner {
   width: 18px;
@@ -596,6 +597,8 @@ html.standalone .ptr {
   transform: rotate(var(--ptr-rot, 0deg));
 }
 .ptr.is-ready .ptr-pill { color: var(--on-bar); font-weight: 600; }
+/* Past the threshold it keeps spinning, like iOS's own refresh control. */
+.ptr.is-ready .ptr-spinner { animation: ptr-spin .7s linear infinite; }
 html.standalone .ptr.is-refreshing {
   z-index: 30;
   height: auto;
@@ -604,6 +607,7 @@ html.standalone .ptr.is-refreshing {
 }
 .ptr.is-refreshing .ptr-pill {
   opacity: 1;
+  transform: none;
   color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--paper-line);

@@ -905,6 +905,7 @@
       frame = 0;
       const progress = Math.min(1, pull / PTR_THRESHOLD);
       ptr.style.setProperty("--ptr-progress", String(progress));
+      ptr.style.setProperty("--ptr-pull", `${Math.round(pull)}px`);
       ptr.style.setProperty("--ptr-rot", `${Math.round(progress * 300)}deg`);
       const ready = pull >= PTR_THRESHOLD;
       ptr.classList.toggle("is-ready", ready);
