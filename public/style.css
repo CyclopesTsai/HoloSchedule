@@ -555,6 +555,37 @@ body.resizing iframe { pointer-events: none; }
   .player-resizer { display: none; }
 }
 
+/* ------------------------------------------------------ pull to refresh */
+
+/* Home-screen (standalone) mode only: no rubber-band bounce. */
+html.standalone { overscroll-behavior-y: none; }
+
+/* Sits hidden just under the topbar and slides down while pulling. */
+.ptr {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9;
+  height: 48px;
+  margin-top: -48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: .85rem;
+  background: var(--backdrop);
+  border-bottom: 1px solid var(--paper-line);
+  pointer-events: none;
+  transition: transform .2s ease;
+}
+.ptr.is-pulling { transition: none; }
+.ptr-icon { display: inline-block; transition: transform .2s ease; }
+.ptr.is-ready .ptr-icon { transform: rotate(180deg); }
+.ptr.is-refreshing .ptr-icon { animation: ptr-spin .8s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+
 /* ---------------------------------------------------------------- footer */
 
 .site-footer {

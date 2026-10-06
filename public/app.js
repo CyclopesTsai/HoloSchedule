@@ -878,6 +878,68 @@
     return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
   }
 
+  // ------------------------------------------------------ pull to refresh
+  // Safari has its own pull-to-refresh, but a page opened from the home
+  // screen (standalone) doesn't, so provide one there only.
+
+  const PTR_THRESHOLD = 70; // px of indicator travel needed to trigger
+  const PTR_MAX = 110;
+
+  function isStandalone() {
+    return navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+  }
+
+  function bindPullToRefresh() {
+    const ptr = $("ptr");
+    const text = ptr.querySelector(".ptr-text");
+    let startY = null;
+    let pull = 0;
+
+    const reset = () => {
+      pull = 0;
+      ptr.classList.remove("is-pulling", "is-ready");
+      ptr.style.transform = "";
+    };
+
+    document.addEventListener("touchstart", (e) => {
+      startY = null;
+      if (!isStandalone() || ptr.classList.contains("is-refreshing")) return;
+      // Only from the very top, one finger, with no overlay open.
+      if (window.scrollY > 0 || e.touches.length !== 1 || !els.player.hidden || !els.chipSettings.hidden) return;
+      startY = e.touches[0].clientY;
+      ptr.style.top = `${document.querySelector(".topbar").offsetHeight}px`;
+    }, { passive: true });
+
+    document.addEventListener("touchmove", (e) => {
+      if (startY === null) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0 || window.scrollY > 0) { // scrolling the list, not pulling
+        if (pull) reset();
+        return;
+      }
+      e.preventDefault(); // no rubber-band while pulling
+      pull = Math.min(PTR_MAX, dy * 0.5);
+      const ready = pull >= PTR_THRESHOLD;
+      ptr.classList.add("is-pulling");
+      ptr.classList.toggle("is-ready", ready);
+      ptr.style.transform = `translateY(${pull}px)`;
+      text.textContent = ready ? "放開以重新整理" : "下拉以重新整理";
+    }, { passive: false });
+
+    document.addEventListener("touchend", () => {
+      if (startY === null) return;
+      startY = null;
+      if (pull < PTR_THRESHOLD) { reset(); return; }
+      ptr.classList.remove("is-pulling");
+      ptr.classList.add("is-refreshing");
+      ptr.style.transform = `translateY(${PTR_THRESHOLD}px)`;
+      text.textContent = "重新整理中…";
+      location.reload(); // fresh data and, after a deploy, fresh code
+    });
+
+    document.addEventListener("touchcancel", () => { startY = null; reset(); });
+  }
+
   // --------------------------------------------------------------- events
 
   function bind() {
@@ -964,6 +1026,8 @@
 
   loadPrefs();
   loadOverrides();
+  if (isStandalone()) document.documentElement.classList.add("standalone");
+  bindPullToRefresh();
   bind();
   load();
 })();

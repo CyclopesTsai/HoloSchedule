@@ -62,6 +62,13 @@
     </div>
   </header>
 
+  <!-- Pull-to-refresh indicator, used only when opened from the home screen
+       (iOS has no built-in pull-to-refresh there). -->
+  <div class="ptr" id="ptr" aria-hidden="true">
+    <span class="ptr-icon">↓</span>
+    <span class="ptr-text">下拉以重新整理</span>
+  </div>
+
   <main class="paper" id="main">
     <div id="days"></div>
     <p class="empty" id="empty" hidden>沒有符合條件的節目。</p>
