@@ -980,6 +980,11 @@
       if (it.id !== state.playingId) openPlayer(it);
     });
     els.playerClose.addEventListener("click", closePlayer);
+    // Opening the stream on YouTube closes the side player so the two don't
+    // play at once. Deferred so the link's own navigation goes ahead first.
+    const closeAfterOpen = () => setTimeout(closePlayer, 0);
+    els.playerYt.addEventListener("click", closeAfterOpen);
+    els.playerYt.addEventListener("auxclick", (e) => { if (e.button === 1) closeAfterOpen(); });
     els.mobileApp.addEventListener("change", () => { state.mobileApp = els.mobileApp.checked; savePrefs(); });
     els.hideEnded.addEventListener("change", () => { state.hideEnded = els.hideEnded.checked; savePrefs(); pendingScroll = true; render(); });
     els.groups.addEventListener("click", (e) => {
