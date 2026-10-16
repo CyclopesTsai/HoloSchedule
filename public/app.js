@@ -38,6 +38,8 @@
     hideEnded: $("hide-ended"),
     mobileAppRow: $("mobile-app-row"),
     mobileApp: $("mobile-app"),
+    desktopTabRow: $("desktop-tab-row"),
+    desktopTab: $("desktop-tab"),
     player: $("player"),
     playerMember: $("player-member"),
     playerTitle: $("player-title"),
@@ -64,6 +66,7 @@
     group: "all",
     hideEnded: false,
     mobileApp: true,     // touch devices: open YouTube (the app) instead of the side player
+    desktopTab: false,   // mouse devices: open YouTube in a new tab instead of the side player
     playingId: null,
     playerWidth: null,   // px chosen by dragging; null = CSS default
     hiddenGroups: new Set(DEFAULT_HIDDEN_GROUPS),
@@ -84,6 +87,7 @@
       if (typeof saved.group === "string") state.group = saved.group;
       state.hideEnded = saved.hideEnded === true;
       if (typeof saved.mobileApp === "boolean") state.mobileApp = saved.mobileApp;
+      if (typeof saved.desktopTab === "boolean") state.desktopTab = saved.desktopTab;
       if (Number.isFinite(saved.playerWidth)) state.playerWidth = saved.playerWidth;
       if (Array.isArray(saved.hiddenGroups)) state.hiddenGroups = new Set(saved.hiddenGroups.map(String));
       for (const { key } of EXPERIMENTS) {
@@ -99,6 +103,7 @@
         group: state.group,
         hideEnded: state.hideEnded,
         mobileApp: state.mobileApp,
+        desktopTab: state.desktopTab,
         playerWidth: state.playerWidth,
         hiddenGroups: [...state.hiddenGroups],
         experiments: state.experiments,
@@ -958,6 +963,8 @@
     els.hideEnded.checked = state.hideEnded;
     els.mobileApp.checked = state.mobileApp;
     els.mobileAppRow.hidden = !isMobileDevice();
+    els.desktopTab.checked = state.desktopTab;
+    els.desktopTabRow.hidden = isMobileDevice();
     renderExperiments();
     applyPlayerWidth();
     bindPlayerResizer();
@@ -970,10 +977,11 @@
       const link = e.target.closest(".entry-link");
       // Modified clicks keep the browser's own behaviour (new tab/window).
       if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      // On phones/tablets let the link through: iOS/Android hand youtube.com
-      // links to the YouTube app. (The live-status check needs the side player,
-      // so it doesn't run in this mode.)
-      if (state.mobileApp && isMobileDevice()) return;
+      // Let the link through when the user prefers YouTube itself: on phones and
+      // tablets iOS/Android hand youtube.com links to the app; on computers the
+      // link opens in a new tab. (The live-status check needs the side player,
+      // so it doesn't run in these modes.)
+      if (isMobileDevice() ? state.mobileApp : state.desktopTab) return;
       const it = state.data.items.find((x) => x.id === link.closest(".entry").dataset.id);
       if (!it) return;
       e.preventDefault();
@@ -986,6 +994,11 @@
     els.playerYt.addEventListener("click", closeAfterOpen);
     els.playerYt.addEventListener("auxclick", (e) => { if (e.button === 1) closeAfterOpen(); });
     els.mobileApp.addEventListener("change", () => { state.mobileApp = els.mobileApp.checked; savePrefs(); });
+    els.desktopTab.addEventListener("change", () => {
+      state.desktopTab = els.desktopTab.checked;
+      savePrefs();
+      if (state.desktopTab) closePlayer();
+    });
     els.hideEnded.addEventListener("change", () => { state.hideEnded = els.hideEnded.checked; savePrefs(); pendingScroll = true; render(); });
     els.groups.addEventListener("click", (e) => {
       const btn = e.target.closest(".chip");
