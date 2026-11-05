@@ -11,6 +11,7 @@
   const SOON_MS = 60 * 60 * 1000;     // "即將開始" window
   const ENDED_AFTER_MS = 30 * 60 * 1000; // not live although started this long before the data snapshot → ended
   const STORAGE_KEY = "holoschedule:prefs";
+  const STATUSES = ["upcoming", "live", "past"]; // Holodex, when data.json has it
 
   const GROUP_ORDER = ["hololive", "HOLOSTARS", "HOLOSTARS English", "mekPark", "COVER"];
   // Groups hidden until the user turns them on (⚙). Hidden groups are left out
@@ -55,6 +56,7 @@
     expSection: $("exp-section"),
     expList: $("exp-list"),
     days: $("days"),
+    statusCredit: $("status-credit"),
     empty: $("empty"),
     tpl: $("entry-tpl"),
   };
@@ -199,10 +201,13 @@
         thumbnail: thumb,
         isLive: it.is_live === true,
         title: typeof it.title === "string" && it.title.trim() ? it.title.trim() : null,
+        status: STATUSES.includes(it.status) ? it.status : null,
       });
     }
     items.sort((a, b) => a.start - b.start);
-    return { generatedAt: isNaN(generatedAt) ? null : generatedAt, items };
+    const statusSource = typeof raw.status_source === "string" && /^https:\/\//.test(raw.status_source)
+      ? raw.status_source : null;
+    return { generatedAt: isNaN(generatedAt) ? null : generatedAt, items, statusSource };
   }
 
   let loading = false;
@@ -232,6 +237,7 @@
       lastGeneratedAt = raw.generated_at;
       pruneEntries();
       pruneOverrides();
+      els.statusCredit.hidden = !state.data.statusSource;
       state.loadError = null;
       renderGroups();
     } catch (err) {
@@ -418,11 +424,15 @@
   // ENDED_AFTER_MS after the start and it wasn't live then.
   // Judging "ended" against the snapshot rather than the clock means stale
   // data (e.g. a delayed update) never turns a running stream into "ended".
+  // A Holodex status, when present, replaces the guessing: "past" is ended
+  // and "upcoming" past its start time stays pending however late it is.
   function streamState(it, now) {
     const ov = overrideFor(it);
     if (ov && it.start <= now) return ov.live ? "live" : "ended";
     if (it.isLive) return "live";
+    if (it.status === "past") return "ended";
     if (it.start > now) return "upcoming";
+    if (it.status === "upcoming") return "pending";
     const asOf = state.data?.generatedAt?.getTime() ?? now;
     return it.start.getTime() >= asOf - ENDED_AFTER_MS ? "pending" : "ended";
   }
@@ -438,8 +448,10 @@
     node.classList.toggle("is-playing", it.id === state.playingId);
     node.querySelector(".badge-soon").textContent =
       // Just past the start → probably about to begin; longer than that → the
-      // data is too old to say.
-      st === "pending" ? (now - it.start <= ENDED_AFTER_MS ? "即將開始" : "待確認") : isSoon ? `${Math.max(1, Math.ceil(untilStart / 60000))} 分鐘後` : "";
+      // data is too old to say, unless Holodex saw it still waiting (late).
+      st === "pending"
+        ? (now - it.start <= ENDED_AFTER_MS ? "即將開始" : it.status === "upcoming" ? "延後" : "待確認")
+        : isSoon ? `${Math.max(1, Math.ceil(untilStart / 60000))} 分鐘後` : "";
 
     const timeText = formatTime(it.start);
     const time = node.querySelector(".time");

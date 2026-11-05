@@ -43,6 +43,7 @@ def test_first_item_fields(hololive_items):
         "thumbnail": "https://img.youtube.com/vi/nUBmqJrE2Ek/mqdefault.jpg",
         "is_live": False,
         "title": None,
+        "status": None,
     }
 
 
@@ -253,7 +254,8 @@ def test_run_writes_payload(tmp_path):
     assert data["generated_at"] == "2026-10-04T04:50:00Z"
     assert len(data["items"]) == 113
     assert {i["group"] for i in data["items"]} == {"hololive", "HOLOSTARS"}
-    assert set(data["items"][0]) == {"id", "member", "group", "start", "url", "thumbnail", "is_live", "title"}
+    assert set(data["items"][0]) == {"id", "member", "group", "start", "url", "thumbnail", "is_live", "title", "status"}
+    assert data["status_source"] is None
     # No title fetcher/cache given: titles stay null and an empty cache is written.
     assert all(i["title"] is None for i in data["items"])
     assert json.loads((tmp_path / "titles.json").read_text(encoding="utf-8")) == {"titles": {}}
@@ -446,3 +448,125 @@ def test_run_writes_titles(tmp_path):
     titles = json.loads((tmp_path / "titles.json").read_text(encoding="utf-8"))["titles"]
     assert len(titles) == len(items) == 113
 
+
+
+# ----------------------------------------------------------------------- holodex
+
+
+class HolodexSession:
+    """Serves `videos` in pages the way /api/v2/videos?paginated=1 does."""
+
+    def __init__(self, videos=(), status=200, total=None, fail=None):
+        self.videos = list(videos)
+        self.status = status
+        self.total = total
+        self.fail = fail
+        self.calls = []
+
+    def get(self, url, params, headers, timeout):
+        assert url == scrape.HOLODEX_URL
+        assert headers["X-APIKEY"] == "key"
+        self.calls.append(params)
+        if self.fail:
+            raise self.fail
+        off, lim = params["offset"], params["limit"]
+        total = len(self.videos) if self.total is None else self.total
+        return JsonResponse(self.status, {"total": total, "items": self.videos[off:off + lim]})
+
+
+def hd(vid, status, title="t"):
+    return {"id": vid, "status": status, "title": title}
+
+
+def test_fetch_holodex_pages_until_total():
+    videos = [hd(f"v{n:03d}", "past") for n in range(120)]
+    session = HolodexSession(videos)
+    window = (datetime(2026, 10, 3, tzinfo=JST), datetime(2026, 10, 5, tzinfo=JST))
+    pauses = []
+    got = scrape.fetch_holodex(session, "key", window, sleep=pauses.append)
+    assert len(got) == 120
+    assert [c["offset"] for c in session.calls] == [0, 50, 100]
+    assert pauses == [scrape.PAUSE_BETWEEN_HOLODEX] * 2
+    first = session.calls[0]
+    assert first["org"] == "Hololive" and first["type"] == "stream"
+    assert first["from"] == "2026-10-02T15:00:00+00:00" and first["to"] == "2026-10-04T15:00:00+00:00"
+
+
+def test_fetch_holodex_stops_at_page_cap():
+    session = HolodexSession([hd(f"v{n:04d}", "past") for n in range(2000)])
+    scrape.fetch_holodex(session, "key", (NOW_UTC, NOW_UTC), sleep=lambda s: None)
+    assert len(session.calls) == scrape.HOLODEX_MAX_PAGES
+
+
+@pytest.mark.parametrize(
+    "session",
+    [HolodexSession(status=403), HolodexSession(fail=scrape.requests.ConnectionError("x"))],
+    ids=["http-error", "network-error"],
+)
+def test_fetch_holodex_errors(session):
+    with pytest.raises(scrape.HolodexError):
+        scrape.fetch_holodex(session, "key", (NOW_UTC, NOW_UTC), sleep=lambda s: None)
+
+
+def test_holodex_window():
+    items = [make_item("a", "hololive", 10), make_item("b", "hololive", 20)]
+    lo, hi = scrape.holodex_window(items)
+    assert lo == datetime(2026, 10, 4, 8, tzinfo=JST)
+    assert hi == datetime(2026, 10, 5, 20, tzinfo=JST)
+
+
+def test_apply_holodex_sets_status_and_titles():
+    items = [
+        make_item("live", "hololive", 10),
+        make_item("ended", "hololive", 9, live=True),   # ホロジュール still shows it live
+        make_item("soon", "hololive", 11, live=True),   # Holodex hasn't noticed the start yet
+        make_item("gone", "hololive", 8),               # "missing" carries no status
+        make_item("unknown", "HOLOSTARS", 12),          # not on Holodex
+    ]
+    videos = {
+        "live": hd("live", "live", " 配信中 "),
+        "ended": hd("ended", "past"),
+        "soon": hd("soon", "upcoming", ""),
+        "gone": hd("gone", "missing"),
+        "extra": hd("extra", "live"),
+    }
+    cache = scrape.apply_holodex(items, videos, {"soon": {"title": "old", "fetched_at": iso(NOW_UTC)}}, FIXTURE_NOW)
+    by_id = {i.id: i for i in items}
+    assert [(i.id, i.status, i.is_live) for i in items] == [
+        ("live", "live", True),
+        ("ended", "past", False),
+        ("soon", "upcoming", True),
+        ("gone", None, False),
+        ("unknown", None, False),
+    ]
+    assert cache["live"] == {"title": "配信中", "fetched_at": iso(NOW_UTC)}
+    assert cache["soon"]["title"] == "old"  # blank Holodex title keeps the old one
+    assert "extra" not in cache and "unknown" not in cache
+    assert by_id["unknown"].to_json()["status"] is None
+
+
+def test_run_with_holodex(tmp_path):
+    out = tmp_path / "data.json"
+    oembed = []
+    code = scrape.run(
+        out, fake_fetcher(ALL_PAGES), FIXTURE_NOW, sleep=lambda s: None,
+        title_fetcher=lambda vid: oembed.append(vid) or "oembed",
+        holodex_fetcher=lambda window: {"nUBmqJrE2Ek": hd("nUBmqJrE2Ek", "past", "from holodex")},
+    )
+    assert code == 0
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["status_source"] == "https://holodex.net/"
+    item = next(i for i in data["items"] if i["id"] == "nUBmqJrE2Ek")
+    assert item["status"] == "past" and item["title"] == "from holodex"
+    assert "nUBmqJrE2Ek" not in oembed and len(oembed) == 112
+
+
+def test_run_survives_holodex_failure(tmp_path):
+    def broken(window):
+        raise scrape.HolodexError("HTTP 503")
+
+    out = tmp_path / "data.json"
+    code = scrape.run(out, fake_fetcher(ALL_PAGES), FIXTURE_NOW, sleep=lambda s: None, holodex_fetcher=broken)
+    assert code == 0
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["status_source"] is None and all(i["status"] is None for i in data["items"])

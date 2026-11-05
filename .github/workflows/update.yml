@@ -43,7 +43,11 @@ jobs:
 
       # Exits non-zero on network errors, unexpected HTML or zero items, which
       # stops the run before deploy so the last good version stays online.
+      # HOLODEX_API_KEY is optional: without it (or if Holodex fails) the data
+      # simply has no per-stream status.
       - name: Scrape schedule.hololive.tv
+        env:
+          HOLODEX_API_KEY: ${{ secrets.HOLODEX_API_KEY }}
         run: python scripts/scrape.py --output public/data.json
 
       - name: Summary
@@ -52,7 +56,8 @@ jobs:
           import json
           d = json.load(open("public/data.json", encoding="utf-8"))
           live = sum(i["is_live"] for i in d["items"])
-          print(f"generated_at `{d['generated_at']}` · {len(d['items'])} items · {live} live")
+          known = sum(i.get("status") is not None for i in d["items"])
+          print(f"generated_at `{d['generated_at']}` · {len(d['items'])} items · {live} live · Holodex status {known}")
           PY
 
       # Pages caches everything for 10 minutes and allows no custom headers;

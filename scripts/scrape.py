@@ -16,6 +16,11 @@ endpoint (no API key). Titles are cached in titles.json next to data.json and
 only refreshed when missing or older than TITLE_TTL, so a run normally makes a
 handful of oEmbed requests. Title lookups never fail the run.
 
+When HOLODEX_API_KEY is set, the Holodex API (https://holodex.net/) adds each
+stream's status (upcoming / live / past) and a fresher title. ホロジュール stays
+the source of the list, times and members; Holodex only fills in what it knows
+about those same video ids, and a Holodex failure never fails the run.
+
 On any failure (network, unexpected HTML, zero items) the script exits non-zero and
 leaves the existing output file untouched.
 """
@@ -30,6 +35,7 @@ import re
 import sys
 import tempfile
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -71,6 +77,13 @@ TITLE_TTL = timedelta(hours=3)
 MAX_TITLE_FETCHES = 150      # per run; the first run without a cache needs ~130
 PAUSE_BETWEEN_TITLES = 0.2
 
+HOLODEX_SITE = "https://holodex.net/"
+HOLODEX_URL = f"{HOLODEX_SITE}api/v2/videos"
+HOLODEX_PAGE_SIZE = 50       # the API's maximum per request
+HOLODEX_MAX_PAGES = 12
+PAUSE_BETWEEN_HOLODEX = 0.5
+HOLODEX_STATUSES = ("upcoming", "live", "past")  # "new"/"missing" tell us nothing
+
 log = logging.getLogger("scrape")
 
 DATE_RE = re.compile(r"(\d{1,2})\s*/\s*(\d{1,2})")
@@ -94,6 +107,7 @@ class Item:
     thumbnail: str | None
     is_live: bool
     title: str | None = None
+    status: str | None = None  # Holodex: upcoming / live / past; None when unknown
 
     def to_json(self) -> dict:
         return {
@@ -105,6 +119,7 @@ class Item:
             "thumbnail": self.thumbnail,
             "is_live": self.is_live,
             "title": self.title,
+            "status": self.status,
         }
 
 
@@ -402,6 +417,113 @@ def fill_titles(
     return new_cache
 
 
+# ------------------------------------------------------------------------ holodex
+
+
+class HolodexError(Exception):
+    """Holodex unavailable or answered unexpectedly; carry on without it."""
+
+
+def holodex_window(items: list[Item]) -> tuple[datetime, datetime]:
+    """The available_at range that covers every listed stream.
+
+    available_at is end_actual, start_actual or start_scheduled, whichever exists
+    first, so it lies between a little before the listed start (early starts) and
+    well after it (ended streams, delays).
+    """
+    starts = [i.start for i in items]
+    return min(starts) - timedelta(hours=2), max(starts) + timedelta(days=1)
+
+
+def fetch_holodex(
+    session: requests.Session,
+    api_key: str,
+    window: tuple[datetime, datetime],
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, dict]:
+    """hololive production streams in `window` from Holodex, keyed by video id."""
+    start, end = (t.astimezone(timezone.utc).isoformat(timespec="seconds") for t in window)
+    videos: dict[str, dict] = {}
+    for page_no in range(HOLODEX_MAX_PAGES):
+        if page_no:
+            sleep(PAUSE_BETWEEN_HOLODEX)
+        try:
+            resp = session.get(
+                HOLODEX_URL,
+                params={
+                    "org": "Hololive",
+                    "type": "stream",
+                    "from": start,
+                    "to": end,
+                    "sort": "available_at",
+                    "order": "asc",
+                    "limit": HOLODEX_PAGE_SIZE,
+                    "offset": page_no * HOLODEX_PAGE_SIZE,
+                    "paginated": "1",
+                },
+                headers={"X-APIKEY": api_key, "Accept": "application/json"},
+                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+            )
+        except requests.RequestException as e:
+            raise HolodexError(str(e)) from e
+        if resp.status_code != 200:
+            raise HolodexError(f"HTTP {resp.status_code}")
+        try:
+            body = resp.json()
+        except ValueError as e:
+            raise HolodexError("invalid JSON") from e
+        page = body.get("items") if isinstance(body, dict) else None
+        if not isinstance(page, list):
+            raise HolodexError("unexpected response shape")
+        for video in page:
+            if isinstance(video, dict) and isinstance(video.get("id"), str):
+                videos[video["id"]] = video
+        total = body.get("total")
+        try:
+            total = int(total)
+        except (TypeError, ValueError):
+            total = None
+        done = (page_no + 1) * HOLODEX_PAGE_SIZE
+        if len(page) < HOLODEX_PAGE_SIZE or (total is not None and done >= total):
+            return videos
+    log.warning("holodex: stopped after %d pages, some streams may lack a status", HOLODEX_MAX_PAGES)
+    return videos
+
+
+def apply_holodex(items: list[Item], videos: dict[str, dict], cache: dict[str, dict], now: datetime) -> dict[str, dict]:
+    """Set status (and is_live) from Holodex; put its titles in the title cache.
+
+    Holodex "live" and "past" override ホロジュール's red border, which can lag
+    behind by a while. "upcoming" leaves is_live alone, since ホロジュール may
+    notice a stream starting before Holodex does.
+    """
+    cache = dict(cache)
+    fetched_at = now.astimezone(timezone.utc).isoformat(timespec="seconds")
+    matched = Counter()
+    for item in items:
+        video = videos.get(item.id)
+        if video is None:
+            continue
+        matched[item.group] += 1
+        status = video.get("status")
+        if status in HOLODEX_STATUSES:
+            item.status = status
+            if status == "live":
+                item.is_live = True
+            elif status == "past":
+                item.is_live = False
+        title = video.get("title")
+        if isinstance(title, str) and title.strip():
+            cache[item.id] = {"title": title.strip(), "fetched_at": fetched_at}
+    totals = Counter(i.group for i in items)
+    log.info(
+        "holodex: %d videos, matched %s",
+        len(videos),
+        ", ".join(f"{g} {matched[g]}/{n}" for g, n in totals.items()),
+    )
+    return cache
+
+
 # ------------------------------------------------------------------------- output
 
 
@@ -409,6 +531,8 @@ def build_payload(items: list[Item], generated_at: datetime) -> dict:
     return {
         "generated_at": generated_at.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "source": BASE_URL,
+        # Set when some statuses came from Holodex, which asks to be credited.
+        "status_source": HOLODEX_SITE if any(i.status for i in items) else None,
         "items": [item.to_json() for item in items],
     }
 
@@ -433,8 +557,9 @@ def run(
     sleep: Callable[[float], None] = time.sleep,
     title_fetcher: Callable[[str], str | None] | None = None,
     title_cache: dict[str, dict] | None = None,
+    holodex_fetcher: Callable[[tuple[datetime, datetime]], dict[str, dict]] | None = None,
 ) -> int:
-    """Without `fetcher`, uses the network for pages and titles; tests pass fakes."""
+    """Without `fetcher`, uses the network for pages, titles and Holodex; tests pass fakes."""
     now = now or datetime.now(timezone.utc)
     titles_path = output.with_name("titles.json")
     if fetcher is None:
@@ -442,6 +567,11 @@ def run(
         fetcher = lambda url: fetch(session, url, sleep)  # noqa: E731
         title_fetcher = lambda vid: fetch_title(session, vid)  # noqa: E731
         title_cache = load_title_cache(titles_path, session)
+        api_key = os.environ.get("HOLODEX_API_KEY", "").strip()
+        if api_key:
+            holodex_fetcher = lambda window: fetch_holodex(session, api_key, window, sleep)  # noqa: E731
+        else:
+            log.info("HOLODEX_API_KEY not set, skipping Holodex")
 
     try:
         items = scrape(fetcher, now, sleep)
@@ -452,7 +582,14 @@ def run(
         log.error("parsed 0 items, keeping existing %s", output)
         return 2
 
-    new_cache = fill_titles(items, title_cache or {}, title_fetcher, now, sleep)
+    title_cache = title_cache or {}
+    if holodex_fetcher is not None:
+        try:
+            title_cache = apply_holodex(items, holodex_fetcher(holodex_window(items)), title_cache, now)
+        except HolodexError as e:
+            log.warning("holodex lookup failed, using ホロジュール only: %s", e)
+
+    new_cache = fill_titles(items, title_cache, title_fetcher, now, sleep)
     write_atomic(titles_path, {"titles": new_cache})
     write_atomic(output, build_payload(items, now))
     live = sum(i.is_live for i in items)

@@ -12,7 +12,8 @@
 schedule.hololive.tv/lives/{hololive,holostars,holostars_english,mekpark,cover}
         │  GitHub Actions（每 15 分鐘、手動、push main）
         ▼
-scripts/scrape.py ──► public/data.json + titles.json（標題經 YouTube oEmbed）
+scripts/scrape.py ──► public/data.json + titles.json（標題經 Holodex／YouTube oEmbed）
+        │  （選用）Holodex API：直播狀態與標題
         │
 scripts/stamp_assets.py（CSS/JS 加版本參數）──► upload-pages-artifact ──► deploy-pages
                                                                               │
@@ -46,6 +47,7 @@ scripts/stamp_assets.py（CSS/JS 加版本參數）──► upload-pages-artifa
 - 日期標題、時間（Asia/Tokyo）、成員、YouTube 連結與縮圖；團體由分頁網址決定。
 - 「直播中」對應原站卡片的紅框（`border: 3px red`）。
 - 標題由 YouTube oEmbed 取得（不需 API key），快取在 `titles.json`，每次只查新出現或過期的影片。
+- （選用）設定 `HOLODEX_API_KEY` 時，另外向 [Holodex API](https://docs.holodex.net/) 查詢同一時段 hololive production 的直播，依影片 ID 補上狀態（`upcoming`／`live`／`past`）與標題；有 Holodex 標題的影片不再查 oEmbed。節目清單、時間與成員仍以ホロジュール為準，Holodex 沒有的影片狀態為 `null`。Holodex 的 `live`／`past` 會覆寫原站的紅框判斷；Holodex 查詢失敗不影響這次更新。
 - 抓取或解析失敗時以非零狀態結束、不覆寫資料，Pages 保留上一次成功的版本。
 
 `data.json` 格式：
@@ -54,6 +56,7 @@ scripts/stamp_assets.py（CSS/JS 加版本參數）──► upload-pages-artifa
 {
   "generated_at": "2026-10-04T04:52:07Z",
   "source": "https://schedule.hololive.tv/",
+  "status_source": "https://holodex.net/",
   "items": [
     {
       "id": "FCM3tqdSVH8",
@@ -63,18 +66,20 @@ scripts/stamp_assets.py（CSS/JS 加版本參數）──► upload-pages-artifa
       "url": "https://www.youtube.com/watch?v=FCM3tqdSVH8",
       "thumbnail": "https://img.youtube.com/vi/FCM3tqdSVH8/mqdefault.jpg",
       "is_live": false,
-      "title": "【妹に運転を教える】…"
+      "title": "【妹に運転を教える】…",
+      "status": "past"
     }
   ]
 }
 ```
 
-時間一律為 `+09:00`，換成其他時區由前端處理；`title` 可能為 `null`。
+時間一律為 `+09:00`，換成其他時區由前端處理；`title`、`status` 可能為 `null`。`status_source` 在有任何 Holodex 狀態時為 Holodex 網址，否則為 `null`。
 
 ## 前端
 
 純 HTML／CSS／vanilla JS（`public/`），讀取同目錄的 `data.json`。
 
+- 有 Holodex 狀態時直接用它判斷已結束／直播中；過了開始時間 30 分鐘仍是 `upcoming` 的標成「延後」。沒有狀態時以開始時間推測。頁尾在有 Holodex 資料時標示來源。
 - 依日期分組，只顯示今天與之後；今天的順序為已結束 → 直播中 → 已過開始時間但尚未確認 → 「現在」線 → 尚未開始。開頁時自動捲到第一筆直播。
 - 團體篩選；齒輪選單可設定時區（台北、東京、瀏覽器本地）、隱藏已結束、要顯示的團體，以及試驗性功能（`app.js` 的 `EXPERIMENTS`，沒有項目時隱藏）。設定記在 localStorage。
 - 點擊節目會在右側開啟播放器（影片＋聊天室，手機為全螢幕，寬度可拖曳）；⌘／Ctrl＋點擊在新分頁開 YouTube。行動裝置預設直接開 YouTube（App），電腦可在齒輪選單改成直接在新分頁開 YouTube；兩者都可改回使用播放器。打開時會透過 YouTube IFrame Player API 確認該節目狀態，並在本機暫時更新清單。播放器要沿用 YouTube 登入狀態時，瀏覽器需允許第三方 Cookie。
@@ -104,7 +109,8 @@ python3 -m venv .venv
 ## 部署
 
 1. 公開 repo，**Settings → Pages → Source** 選 **GitHub Actions**。
-2. 推送到 `main`，或在 **Actions → Update schedule → Run workflow** 手動執行。
+2. （選用）登入 [Holodex](https://holodex.net/)，在 **Account Settings** 取得 API key，加到 repo 的 **Settings → Secrets and variables → Actions**，名稱為 `HOLODEX_API_KEY`。
+3. 推送到 `main`，或在 **Actions → Update schedule → Run workflow** 手動執行。
 
 `update.yml` 由排程（`7,22,37,52 * * * *`）、手動觸發與 push 到 `main` 啟動，權限只有 `contents: read`、`pages: write`、`id-token: write`。資料只存在 Pages 部署產物中，不會 commit 回 repo。GitHub 的排程可能延遲或跳過，需要時可手動執行。
 
