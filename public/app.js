@@ -29,6 +29,8 @@
   // The section is hidden while this list is empty.
   const EXPERIMENTS = [];
 
+  const VIEWERS_FMT = new Intl.NumberFormat("zh-TW", { notation: "compact", maximumFractionDigits: 1 });
+
   const TZ_LABEL = { "Asia/Taipei": "台北時間", "Asia/Tokyo": "東京時間", "local": "瀏覽器本地時間" };
 
   const $ = (id) => document.getElementById(id);
@@ -202,6 +204,7 @@
         isLive: it.is_live === true,
         title: typeof it.title === "string" && it.title.trim() ? it.title.trim() : null,
         status: STATUSES.includes(it.status) ? it.status : null,
+        viewers: Number.isSafeInteger(it.viewers) && it.viewers >= 0 ? it.viewers : null,
       });
     }
     items.sort((a, b) => a.start - b.start);
@@ -466,7 +469,18 @@
       time.prepend(day);
     }
 
-    const status = st === "live" ? "直播中，" : isSoon ? "即將開始，" : "";
+    // Holodex count as of the data snapshot.
+    const viewers = node.querySelector(".viewers");
+    const showViewers = st === "live" && it.viewers !== null && !overrideFor(it);
+    viewers.hidden = !showViewers;
+    let viewersText = "";
+    if (showViewers) {
+      viewersText = `${VIEWERS_FMT.format(it.viewers)} 人`;
+      viewers.textContent = viewersText;
+      viewers.title = `${it.viewers.toLocaleString("zh-TW")} 人觀看`;
+    }
+
+    const status = st === "live" ? (showViewers ? `直播中，約 ${viewersText}觀看，` : "直播中，") : isSoon ? "即將開始，" : "";
     const titlePart = it.title ? `：${it.title}` : "";
     node.querySelector(".entry-link").setAttribute(
       "aria-label", `${status}${timeText} ${it.member}（${it.group}）${titlePart}，在 YouTube 開啟`);

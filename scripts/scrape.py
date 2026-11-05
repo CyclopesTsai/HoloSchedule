@@ -17,7 +17,8 @@ only refreshed when missing or older than TITLE_TTL, so a run normally makes a
 handful of oEmbed requests. Title lookups never fail the run.
 
 When HOLODEX_API_KEY is set, the Holodex API (https://holodex.net/) adds each
-stream's status (upcoming / live / past) and a fresher title. ホロジュール stays
+stream's status (upcoming / live / past), a fresher title and, for live
+streams, the viewer count. ホロジュール stays
 the source of the list, times and members; Holodex only fills in what it knows
 about those same video ids, and a Holodex failure never fails the run.
 
@@ -108,6 +109,7 @@ class Item:
     is_live: bool
     title: str | None = None
     status: str | None = None  # Holodex: upcoming / live / past; None when unknown
+    viewers: int | None = None  # Holodex: concurrent viewers, live streams only
 
     def to_json(self) -> dict:
         return {
@@ -120,6 +122,7 @@ class Item:
             "is_live": self.is_live,
             "title": self.title,
             "status": self.status,
+            "viewers": self.viewers,
         }
 
 
@@ -453,6 +456,7 @@ def fetch_holodex(
                 params={
                     "org": "Hololive",
                     "type": "stream",
+                    "include": "live_info",  # adds live_viewers
                     "from": start,
                     "to": end,
                     "sort": "available_at",
@@ -510,6 +514,10 @@ def apply_holodex(items: list[Item], videos: dict[str, dict], cache: dict[str, d
             item.status = status
             if status == "live":
                 item.is_live = True
+                viewers = video.get("live_viewers")
+                # bool is an int subclass; YouTube hides counts on some streams.
+                if isinstance(viewers, int) and not isinstance(viewers, bool) and viewers >= 0:
+                    item.viewers = viewers
             elif status == "past":
                 item.is_live = False
         title = video.get("title")

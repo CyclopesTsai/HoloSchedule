@@ -44,6 +44,7 @@ def test_first_item_fields(hololive_items):
         "is_live": False,
         "title": None,
         "status": None,
+        "viewers": None,
     }
 
 
@@ -254,7 +255,7 @@ def test_run_writes_payload(tmp_path):
     assert data["generated_at"] == "2026-10-04T04:50:00Z"
     assert len(data["items"]) == 113
     assert {i["group"] for i in data["items"]} == {"hololive", "HOLOSTARS"}
-    assert set(data["items"][0]) == {"id", "member", "group", "start", "url", "thumbnail", "is_live", "title", "status"}
+    assert set(data["items"][0]) == {"id", "member", "group", "start", "url", "thumbnail", "is_live", "title", "status", "viewers"}
     assert data["status_source"] is None
     # No title fetcher/cache given: titles stay null and an empty cache is written.
     assert all(i["title"] is None for i in data["items"])
@@ -474,8 +475,8 @@ class HolodexSession:
         return JsonResponse(self.status, {"total": total, "items": self.videos[off:off + lim]})
 
 
-def hd(vid, status, title="t"):
-    return {"id": vid, "status": status, "title": title}
+def hd(vid, status, title="t", viewers=None):
+    return {"id": vid, "status": status, "title": title, "live_viewers": viewers}
 
 
 def test_fetch_holodex_pages_until_total():
@@ -489,6 +490,7 @@ def test_fetch_holodex_pages_until_total():
     assert pauses == [scrape.PAUSE_BETWEEN_HOLODEX] * 2
     first = session.calls[0]
     assert first["org"] == "Hololive" and first["type"] == "stream"
+    assert first["include"] == "live_info"
     assert first["from"] == "2026-10-02T15:00:00+00:00" and first["to"] == "2026-10-04T15:00:00+00:00"
 
 
@@ -524,8 +526,8 @@ def test_apply_holodex_sets_status_and_titles():
         make_item("unknown", "HOLOSTARS", 12),          # not on Holodex
     ]
     videos = {
-        "live": hd("live", "live", " 配信中 "),
-        "ended": hd("ended", "past"),
+        "live": hd("live", "live", " 配信中 ", viewers=12345),
+        "ended": hd("ended", "past", viewers=999),  # counts only kept while live
         "soon": hd("soon", "upcoming", ""),
         "gone": hd("gone", "missing"),
         "extra": hd("extra", "live"),
@@ -543,6 +545,14 @@ def test_apply_holodex_sets_status_and_titles():
     assert cache["soon"]["title"] == "old"  # blank Holodex title keeps the old one
     assert "extra" not in cache and "unknown" not in cache
     assert by_id["unknown"].to_json()["status"] is None
+    assert [i.viewers for i in items] == [12345, None, None, None, None]
+
+
+@pytest.mark.parametrize("raw", [None, -1, True, "123", 1.5])
+def test_apply_holodex_ignores_bad_viewer_counts(raw):
+    items = [make_item("v", "hololive", 10)]
+    scrape.apply_holodex(items, {"v": hd("v", "live", viewers=raw)}, {}, FIXTURE_NOW)
+    assert items[0].status == "live" and items[0].viewers is None
 
 
 def test_run_with_holodex(tmp_path):

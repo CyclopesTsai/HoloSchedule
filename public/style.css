@@ -357,6 +357,15 @@ select {
   min-width: 0;
 }
 
+.viewers {
+  flex: 0 0 auto; /* short; stays visible while the name and group shrink */
+  font-size: .66rem;
+  font-weight: 700;
+  color: var(--gold-ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .member {
   flex: 0 1 auto;
   min-width: 0;
